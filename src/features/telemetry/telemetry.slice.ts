@@ -1,32 +1,30 @@
 import { createAppSlice } from "@/store/create-app-slice";
 import { PayloadAction } from "@reduxjs/toolkit";
 
-export interface LogMessage {
-  id: string;
-  timestamp: string;
-  type: string;
+/**
+ * Shape of real-time WebSocket notification events
+ * from the backend NotificationGateway.broadcastToOrder().
+ */
+export interface WebSocketNotification {
+  orderId: string;
+  eventType: string;
   message: string;
-  correlationId: string;
-  causationId: string;
-  payload: Record<string, any>;
-  status: "success" | "pending" | "failed";
+  occurredAt: string;
 }
 
 export interface TelemetryState {
-  eventLog: LogMessage[];
+  /** Real-time WebSocket events, capped at 100 entries */
+  eventLog: WebSocketNotification[];
+  /** Socket.io connection state */
   connectionStatus: "connected" | "disconnected" | "connecting";
-  activeSagasCount: number;
-  completedSagasCount: number;
-  failedSagasCount: number;
 }
 
 const initialState: TelemetryState = {
   eventLog: [],
   connectionStatus: "disconnected",
-  activeSagasCount: 0,
-  completedSagasCount: 0,
-  failedSagasCount: 0,
 };
+
+const MAX_EVENT_LOG_SIZE = 100;
 
 export const telemetrySlice = createAppSlice({
   name: "telemetry",
@@ -35,29 +33,24 @@ export const telemetrySlice = createAppSlice({
     setConnectionStatus: (state, action: PayloadAction<"connected" | "disconnected" | "connecting">) => {
       state.connectionStatus = action.payload;
     },
-    addLogMessage: (state, action: PayloadAction<LogMessage>) => {
+    addNotification: (state, action: PayloadAction<WebSocketNotification>) => {
       state.eventLog.unshift(action.payload);
-      if (state.eventLog.length > 100) {
+      if (state.eventLog.length > MAX_EVENT_LOG_SIZE) {
         state.eventLog.pop();
       }
     },
-    updateMetrics: (state, action: PayloadAction<{ active: number; completed: number; failed: number }>) => {
-      state.activeSagasCount = action.payload.active;
-      state.completedSagasCount = action.payload.completed;
-      state.failedSagasCount = action.payload.failed;
+    clearEventLog: (state) => {
+      state.eventLog = [];
     },
   },
   selectors: {
     selectEventLog: (state) => state.eventLog,
     selectConnectionStatus: (state) => state.connectionStatus,
-    selectTelemetryMetrics: (state) => ({
-      active: state.activeSagasCount,
-      completed: state.completedSagasCount,
-      failed: state.failedSagasCount,
-    }),
+    selectEventLogByOrderId: (state, orderId: string) =>
+      state.eventLog.filter((e) => e.orderId === orderId),
   },
 });
 
-export const { setConnectionStatus, addLogMessage, updateMetrics } = telemetrySlice.actions;
-export const { selectEventLog, selectConnectionStatus, selectTelemetryMetrics } = telemetrySlice.selectors;
+export const { setConnectionStatus, addNotification, clearEventLog } = telemetrySlice.actions;
+export const { selectEventLog, selectConnectionStatus } = telemetrySlice.selectors;
 export default telemetrySlice.reducer;

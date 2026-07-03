@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Cpu, DollarSign, Package, ShieldCheck, Truck, RefreshCw } from "lucide-react";
 import { useAppSelector } from "@/store/hooks";
 import { selectEventLog } from "@/features/telemetry/telemetry.slice";
+import { selectAllNotifications } from "@/features/notifications/notifications.slice";
 
 interface TickerItem {
   id: string;
@@ -14,50 +15,30 @@ interface TickerItem {
 
 export function EventTicker() {
   const liveLogs = useAppSelector(selectEventLog);
+  const dbNotifications = useAppSelector(selectAllNotifications);
   const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
-
-  // Default fallback events for visual splendor when backend is not connected/firing
-  const defaultItems: TickerItem[] = [
-    {
-      id: "1",
-      eventType: "order.saga.placed",
-      message: "Order placed: #6f9a8b1c - pending authorization",
-      time: "Just now",
-    },
-    {
-      id: "2",
-      eventType: "order.saga.inventory-reserved",
-      message: "Inventory reserved: 2 units SKU 'SKU-SSD-2TB'",
-      time: "2s ago",
-    },
-    {
-      id: "3",
-      eventType: "order.saga.payment-completed",
-      message: "Payment captured successfully via Stripe Gateway",
-      time: "4s ago",
-    },
-    {
-      id: "4",
-      eventType: "order.saga.shipment-created",
-      message: "Shipment scheduled: Courier DHL Express",
-      time: "8s ago",
-    },
-    {
-      id: "5",
-      eventType: "order.saga.shipment-delivered",
-      message: "Delivery confirmed: Customer signature match",
-      time: "15s ago",
-    },
-  ];
 
   useEffect(() => {
     if (liveLogs.length > 0) {
       setTickerItems(
-        liveLogs.slice(0, 10).map((log) => ({
-          id: log.id,
-          eventType: log.type,
+        liveLogs.slice(0, 10).map((log, i) => ({
+          id: `${log.orderId}-${i}`,
+          eventType: log.eventType,
           message: log.message,
-          time: new Date(log.timestamp).toLocaleTimeString([], {
+          time: new Date(log.occurredAt).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }),
+        }))
+      );
+    } else if (dbNotifications.length > 0) {
+      setTickerItems(
+        dbNotifications.slice(0, 10).map((notif) => ({
+          id: notif.id,
+          eventType: notif.eventType,
+          message: notif.message,
+          time: new Date(notif.createdAt).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
             second: "2-digit",
@@ -65,25 +46,25 @@ export function EventTicker() {
         }))
       );
     } else {
-      setTickerItems(defaultItems);
+      setTickerItems([]);
     }
-  }, [liveLogs]);
+  }, [liveLogs, dbNotifications]);
 
   const getEventIcon = (type: string) => {
     const t = type.toLowerCase();
     if (t.includes("placed")) return <Cpu className="h-3.5 w-3.5 text-cyan-400" />;
-    if (t.includes("reserved")) return <Package className="h-3.5 w-3.5 text-emerald-400" />;
+    if (t.includes("reserved") || t.includes("inventory")) return <Package className="h-3.5 w-3.5 text-emerald-400" />;
     if (t.includes("payment")) return <DollarSign className="h-3.5 w-3.5 text-violet-400" />;
-    if (t.includes("shipment")) return <Truck className="h-3.5 w-3.5 text-amber-400" />;
+    if (t.includes("ship") || t.includes("truck")) return <Truck className="h-3.5 w-3.5 text-amber-400" />;
     return <ShieldCheck className="h-3.5 w-3.5 text-rose-400" />;
   };
 
   const getEventClass = (type: string) => {
     const t = type.toLowerCase();
     if (t.includes("placed")) return "border-cyan-500/20 bg-cyan-500/5 text-cyan-400";
-    if (t.includes("reserved")) return "border-emerald-500/20 bg-emerald-500/5 text-emerald-400";
+    if (t.includes("reserved") || t.includes("inventory")) return "border-emerald-500/20 bg-emerald-500/5 text-emerald-400";
     if (t.includes("payment")) return "border-violet-500/20 bg-violet-500/5 text-violet-400";
-    if (t.includes("shipment")) return "border-amber-500/20 bg-amber-500/5 text-amber-400";
+    if (t.includes("ship") || t.includes("truck")) return "border-amber-500/20 bg-amber-500/5 text-amber-400";
     return "border-rose-500/20 bg-rose-500/5 text-rose-400";
   };
 

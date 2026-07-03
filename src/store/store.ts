@@ -5,6 +5,8 @@ import catalogReducer from "@/features/catalog/catalog.slice";
 import ordersReducer from "@/features/orders/orders.slice";
 import shipmentsReducer from "@/features/shipments/shipments.slice";
 import telemetryReducer from "@/features/telemetry/telemetry.slice";
+import notificationsReducer from "@/features/notifications/notifications.slice";
+import healthReducer from "@/features/health/health.slice";
 import uiReducer from "@/features/ui/ui.slice";
 
 /**
@@ -30,6 +32,8 @@ const rootReducer = combineSlices({
   orders: ordersReducer,
   shipments: shipmentsReducer,
   telemetry: telemetryReducer,
+  notifications: notificationsReducer,
+  health: healthReducer,
   ui: uiReducer,
 });
 
@@ -38,7 +42,7 @@ export type RootState = ReturnType<typeof rootReducer>;
 const persistConfig = {
   key: "root",
   storage,
-  blacklist: ["telemetry", "ui"],
+  blacklist: ["telemetry", "ui", "health", "notifications"],
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

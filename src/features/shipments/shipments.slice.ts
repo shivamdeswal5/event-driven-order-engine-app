@@ -1,12 +1,14 @@
 import { createAppSlice } from "@/store/create-app-slice";
+import { ShipmentStatus } from "@/common/shipment-status.enum";
 
 export interface Shipment {
   id: string;
   orderId: string;
   carrier: string;
   trackingNumber: string;
-  status: string;
-  shippedAt: string;
+  status: ShipmentStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ShipmentsState {

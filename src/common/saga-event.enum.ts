@@ -1,10 +1,14 @@
+/**
+ * Maps to the exact `eventType` values emitted by the backend NotificationGateway.
+ * These are the processor class names used by the notification module.
+ */
 export enum SagaEventType {
-  ORDER_PLACED = "order.saga.placed",
-  INVENTORY_RESERVED = "order.saga.inventory-reserved",
-  INVENTORY_RESERVATION_FAILED = "order.saga.inventory-reservation-failed",
-  PAYMENT_COMPLETED = "order.saga.payment-completed",
-  PAYMENT_FAILED = "order.saga.payment-failed",
-  SHIPMENT_CREATED = "order.saga.shipment-created",
-  SHIPMENT_DELIVERED = "order.saga.shipment-delivered",
-  ORDER_CANCELLED = "order.saga.cancelled",
+  ORDER_PLACED = "OrderPlacedProcessor",
+  INVENTORY_RESERVED = "InventoryReservedProcessor",
+  INVENTORY_RESERVATION_FAILED = "InventoryReservationFailedProcessor",
+  PAYMENT_COMPLETED = "PaymentCompletedProcessor",
+  PAYMENT_FAILED = "PaymentFailedProcessor",
+  SHIPMENT_CREATED = "ShipmentCreatedProcessor",
+  SHIPMENT_DELIVERED = "ShipmentDeliveredProcessor",
+  ORDER_CANCELLED = "OrderCancelledProcessor",
 }
