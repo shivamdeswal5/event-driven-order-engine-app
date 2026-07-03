@@ -1,0 +1,25 @@
+version: "3"
+
+services:
+  app:
+    container_name: order-engine-app
+    build:
+      context: ./
+      dockerfile: Dockerfile.dev
+    env_file:
+      - .env
+    restart: always
+    ports:
+      - ${APP_FORWARD_PORT:-3001}:${PORT:-3001}
+    expose:
+      - ${PORT:-3001}
+    tty: true
+    stdin_open: true
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - order-engine-shared-network
+networks:
+  order-engine-shared-network:
+    external: true

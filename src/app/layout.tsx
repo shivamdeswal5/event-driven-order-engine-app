@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google";
-import { Providers } from "./providers";
+import { StoreProvider } from "./store-provider";
+import { ThemeProvider } from "@/theme/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,8 +16,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Apex Console | Event-Driven Monolith Visualizer",
-  description: "Interactive real-time Saga topology and event-driven control center.",
+  title: "Apex Console | Distributed Choreography Saga Observability",
+  description: "Real-time event choreography, transactional outbox logging, and interactive fault injection control deck.",
 };
 
 export default function RootLayout({
@@ -24,11 +26,30 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${jetbrainsMono.variable} antialiased`}
-      >
-        <Providers>{children}</Providers>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
+    >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function() {
+              try {
+                var t = localStorage.getItem('theme') || 'obsidian';
+                document.documentElement.className = t;
+                document.documentElement.setAttribute('data-theme', t);
+              } catch (e) {}
+            })()`,
+          }}
+        />
+      </head>
+      <body suppressHydrationWarning className="min-h-full flex flex-col font-sans bg-background text-foreground transition-colors duration-300">
+        <StoreProvider>
+          <ThemeProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </ThemeProvider>
+        </StoreProvider>
       </body>
     </html>
   );
