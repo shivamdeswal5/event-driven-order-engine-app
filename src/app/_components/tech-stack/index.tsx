@@ -41,7 +41,7 @@ export function TechStack() {
       name: "RabbitMQ Broker",
       category: "Backend",
       icon: <Network className="h-5 w-5 text-amber-400" />,
-      description: "High throughput messaging queue orchestrating saga event exchanges.",
+      description: "High throughput messaging queue routing choreographed saga event exchanges.",
     },
     {
       name: "PostgreSQL & MikroORM",

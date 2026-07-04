@@ -36,7 +36,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `(function() {
               try {
-                var t = localStorage.getItem('theme') || 'obsidian';
+                var t = localStorage.getItem('theme') || 'light';
                 document.documentElement.className = t;
                 document.documentElement.setAttribute('data-theme', t);
               } catch (e) {}

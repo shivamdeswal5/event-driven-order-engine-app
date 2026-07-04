@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Navbar } from "./_components/navbar";
+import { Header } from "@/components/header";
 import { Hero } from "./_components/hero";
 import { ArchitectureShowcase } from "./_components/architecture-showcase";
 import { PatternCards } from "./_components/pattern-cards";
@@ -35,7 +35,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col min-h-screen relative overflow-x-hidden bg-background">
-      <Navbar />
+      <Header />
       <main className="flex-1">
         {/* Section 1: Hero */}
         <Hero />

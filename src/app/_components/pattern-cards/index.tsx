@@ -140,7 +140,7 @@ function DraggablePatternCard({
           },
         });
       }}
-      className="absolute left-0 right-0 mx-auto w-[92%] sm:w-[380px] flex flex-col rounded-2xl border border-border/60 dark:border-border/30 bg-background p-5 hover:shadow-2xl transition-shadow duration-300 group overflow-hidden touch-none select-none cursor-grab active:cursor-grabbing [transform-style:preserve-3d]"
+      className="absolute left-0 right-0 mx-auto w-[92%] sm:w-[380px] flex flex-col rounded-2xl border border-border/60 dark:border-border/100 bg-background p-5 hover:shadow-2xl transition-shadow duration-300 group overflow-hidden touch-none select-none cursor-grab active:cursor-grabbing [transform-style:preserve-3d]"
     >
       {/* Solid Tech Stack-like Color Overlay */}
       <div className="absolute inset-0 bg-card/35 pointer-events-none z-0" />
@@ -206,15 +206,18 @@ await em.transactional(async (tx) => {
     },
     {
       title: "Choreographed Saga",
-      subtitle: "Decentralized Orchestration",
+      subtitle: "Decentralized Coordination",
       icon: <Shuffle className="h-6 w-6" />,
       color: "text-emerald-400",
       bgColor: "bg-emerald-500/10",
-      description: "Contexts react autonomously to domain events without a central coordinator. If payment fails, compensation handlers execute to restore the system state.",
-      snippet: `// Event-driven reactive payment handler
-@OnEvent('inventory.reserved')
-onReserved(event: ReservedEvent) {
-  this.payment.capture(event.orderId);
+      description: "Contexts react autonomously to domain events without a central coordinator. Compensation processors execute on failure events (e.g. PaymentFailedEvent) to restore system state.",
+      snippet: `// Transactional event processor
+@Injectable()
+export class InventoryReservedProcessor {
+  @Transactional()
+  async handle(msg: { messageId; body }) {
+    // Process billing & write outbox atomically
+  }
 }`,
     },
     {
@@ -223,12 +226,13 @@ onReserved(event: ReservedEvent) {
       icon: <SearchCode className="h-6 w-6" />,
       color: "text-violet-400",
       bgColor: "bg-violet-500/10",
-      description: "Applies Inbox Pattern to verify whether an incoming event was already processed by comparing Message IDs, protecting downstream state from network retries.",
-      snippet: `// Message duplication verification
-const exists = await inbox.exists({
-  msgId, handlerName
-});
-if (exists) return; // Discard duplicate`,
+      description: "Applies Transactional Inbox pattern to deduplicate events. Inserting the Message ID and Handler Name into the inbox table fails on unique key constraint if already processed, rolling back the transaction.",
+      snippet: `// Transactional Inbox deduplication
+await this.inboxRepository.storeInboxMessage({
+  messageId: message.messageId,
+  handlerName: this.getHandlerName(),
+  eventType: 'InventoryReservedEvent'
+}, schema);`,
     },
     {
       title: "CQRS Isolation",

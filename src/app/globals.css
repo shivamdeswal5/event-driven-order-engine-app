@@ -48,8 +48,8 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
-  /* Steel (Light Mode) */
+:root, [data-theme="light"] {
+  /* Light Mode (previously Steel) */
   --background: oklch(0.98 0.01 220);
   --foreground: oklch(0.15 0.02 220);
   --card: oklch(1 0 0);
@@ -72,38 +72,15 @@
   --radius: 0.625rem;
 }
 
-.dark, [data-theme="obsidian"] {
-  /* Obsidian (Default Dark) */
-  --background: oklch(0.1 0.01 240);
-  --foreground: oklch(0.98 0 0);
-  --card: oklch(0.13 0.01 240);
-  --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.13 0.01 240);
-  --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.75 0.18 190); /* Cyan */
-  --primary-foreground: oklch(0.1 0.01 240);
-  --secondary: oklch(0.18 0.01 240);
-  --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.16 0.01 240);
-  --muted-foreground: oklch(0.7 0.01 240);
-  --accent: oklch(0.18 0.01 240);
-  --accent-foreground: oklch(0.98 0 0);
-  --destructive: oklch(0.58 0.25 27);
-  --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.2 0.01 240);
-  --input: oklch(0.2 0.01 240);
-  --ring: oklch(0.75 0.18 190);
-}
-
-[data-theme="midnight"] {
-  /* Midnight (Warm Dark Theme) */
+.dark, [data-theme="dark"] {
+  /* Dark Mode (previously Midnight) */
   --background: oklch(0.08 0.02 280);
   --foreground: oklch(0.95 0.01 280);
   --card: oklch(0.11 0.02 280);
   --card-foreground: oklch(0.95 0.01 280);
   --popover: oklch(0.11 0.02 280);
   --popover-foreground: oklch(0.95 0.01 280);
-  --primary: oklch(0.65 0.22 290); /* Purple */
+  --primary: oklch(0.65 0.22 290); /* Purple/Indigo */
   --primary-foreground: oklch(0.99 0 0);
   --secondary: oklch(0.16 0.02 280);
   --secondary-foreground: oklch(0.95 0.01 280);
@@ -113,8 +90,8 @@
   --accent-foreground: oklch(0.95 0.01 280);
   --destructive: oklch(0.55 0.22 15);
   --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.18 0.02 280);
-  --input: oklch(0.18 0.02 280);
+  --border: oklch(0.22 0.04 280);
+  --input: oklch(0.22 0.04 280);
   --ring: oklch(0.65 0.22 290);
 }
 
@@ -129,4 +106,32 @@
   body {
     @apply bg-background text-foreground transition-colors duration-300;
   }
+}
+
+/* React Flow Controls Custom Theme overrides */
+.react-flow__controls {
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  overflow: hidden !important;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1) !important;
+  background-color: var(--card) !important;
+}
+
+.react-flow__controls-button {
+  background-color: var(--card) !important;
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--foreground) !important;
+  fill: var(--foreground) !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: var(--muted) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor !important;
+}
+
+.react-flow__attribution {
+  display: none !important;
 }

@@ -2,18 +2,20 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Cpu, Menu, Layers, Workflow, ArrowRight } from "lucide-react";
+import { Cpu, Menu, Layers, Workflow, ArrowRight, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAppSelector } from "@/store/hooks";
 import { selectConnectionStatus } from "@/features/telemetry/telemetry.slice";
 import { motion } from "framer-motion";
+import { useTheme } from "@/theme/theme-provider";
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState<string>("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const connectionStatus = useAppSelector(selectConnectionStatus);
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     // Handle scrolling highlights
@@ -129,14 +131,18 @@ export function Navbar() {
 
         {/* Right Actions */}
         <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border border-border bg-background/50 backdrop-blur-sm text-[11px] font-medium">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                connectionStatus === "connected" ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
-              }`}
-            />
-            <span>{connectionStatus === "connected" ? "Engine Online" : "Engine Offline"}</span>
-          </div>
+          {/* Theme Settings Toggle */}
+          <button
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            className="flex items-center justify-center p-2 rounded-lg border border-border bg-background/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+            title={`Switch to ${theme === "light" ? "Dark" : "Light"} Mode`}
+          >
+            {theme === "light" ? (
+              <Moon className="h-4 w-4 text-primary" />
+            ) : (
+              <Sun className="h-4 w-4 text-amber-500 animate-pulse" />
+            )}
+          </button>
 
           <Link href="/console" className="hidden md:block">
             <Button size="sm" className="font-semibold shadow-md bg-primary hover:bg-primary/90 text-primary-foreground transition-all">

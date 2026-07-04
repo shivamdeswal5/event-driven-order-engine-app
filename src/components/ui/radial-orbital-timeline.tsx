@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { ArrowRight, Link as LinkIcon, Zap, ShoppingCart, Package, CreditCard, Truck, CheckCircle2 } from "lucide-react";
+import { ArrowRight, ArrowLeft, Link as LinkIcon, Zap, ShoppingCart, Package, CreditCard, Truck, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +27,7 @@ const defaultTimelineData: TimelineItem[] = [
     id: 1,
     title: "1. Order Placed",
     date: "Step 1",
-    content: "Saga coordinator initializes. Writes order to DB and puts event in Transactional Outbox. Relayed to RabbitMQ exchange as order.placed.",
+    content: "Order Service receives order request, persists Order entity (status: PLACED) to order_schema, and stores OrderPlacedEvent in the outbox_messages table in the same transaction.",
     category: "Order Context",
     icon: ShoppingCart,
     relatedIds: [2],
@@ -38,45 +38,45 @@ const defaultTimelineData: TimelineItem[] = [
     id: 2,
     title: "2. Inventory Reserved",
     date: "Step 2",
-    content: "Inventory service consumes order.placed, decrements product stock, and writes to its local DB. Emits inventory.reserved event.",
+    content: "Inventory Service consumes order.placed, checks stock, decrements stock_quantity, increases reserved_quantity, saves Reservation (status: RESERVED) to inventory_schema, and dispatches InventoryReservedEvent.",
     category: "Inventory Context",
     icon: Package,
     relatedIds: [1, 3],
     status: "completed",
-    energy: 90,
+    energy: 95,
   },
   {
     id: 3,
-    title: "3. Payment Charged",
+    title: "3. Payment Completed",
     date: "Step 3",
-    content: "Payment service consumes inventory.reserved, charges customer via Stripe API, and persists transaction status. Emits payment.completed.",
+    content: "Payment Service consumes inventory.reserved, simulates authorization (fails on amount ending in .99), creates Payment (status: COMPLETED) in payment_schema, and saves PaymentCompletedEvent in the transactional outbox.",
     category: "Payment Context",
     icon: CreditCard,
     relatedIds: [2, 4],
     status: "completed",
-    energy: 95,
+    energy: 98,
   },
   {
     id: 4,
-    title: "4. Shipment Dispatched",
+    title: "4. Shipment Created",
     date: "Step 4",
-    content: "Shipping service consumes payment.completed, schedules delivery dispatch, and updates warehouse manifests. Emits shipment.created.",
+    content: "Shipping Service consumes payment.completed, schedules delivery, creates Shipment (status: PENDING) in shipping_schema, and dispatches ShipmentCreatedEvent via the Outbox Relay.",
     category: "Shipping Context",
     icon: Truck,
     relatedIds: [3, 5],
     status: "in-progress",
-    energy: 70,
+    energy: 90,
   },
   {
     id: 5,
-    title: "5. Transaction Committed",
+    title: "5. Eventual Consistency",
     date: "Step 5",
-    content: "Order context receives confirmation from downstream contexts, flags the Order state as COMMITTED, and streams success via Websocket to client.",
+    content: "Order Service consumes ShipmentCreatedEvent and transitions order status to SHIPPED. When the shipment is delivered, ShipmentDeliveredEvent transitions the order status to DELIVERED, completing the decentralized saga.",
     category: "Success Context",
     icon: CheckCircle2,
     relatedIds: [4],
     status: "pending",
-    energy: 20,
+    energy: 99,
   },
 ];
 
@@ -255,10 +255,10 @@ export default function RadialOrbitalTimeline({
             perspective: "1200px",
           }}
         >
-          {/* Central Saga Hub */}
+          {/* Central Event Bus Hub */}
           <div className="absolute w-20 h-20 rounded-full bg-gradient-to-br from-primary via-indigo-600 to-violet-500 flex flex-col items-center justify-center z-10 shadow-[0_0_40px_rgba(99,102,241,0.25)]">
-            <div className="text-[10px] font-bold font-mono tracking-wider text-white uppercase text-center px-1">SAGA</div>
-            <div className="text-[8px] font-mono text-white/70 uppercase">Coordinator</div>
+            <div className="text-[10px] font-bold font-mono tracking-wider text-white uppercase text-center px-1">RABBITMQ</div>
+            <div className="text-[8px] font-mono text-white/70 uppercase">Event Bus</div>
           </div>
 
           {timelineData.map((item, index) => {
@@ -361,55 +361,73 @@ export default function RadialOrbitalTimeline({
                     <CardContent className="p-4 pt-0 text-xs text-muted-foreground leading-relaxed">
                       <p className="mb-4">{item.content}</p>
 
-                      <div className="pt-3 border-t border-border/40">
-                        <div className="flex justify-between items-center text-[10px] mb-1.5 font-semibold text-foreground">
-                          <span className="flex items-center gap-1">
-                            <Zap size={10} className="text-amber-500" />
-                            Reliability Rating
-                          </span>
-                          <span className="font-mono text-muted-foreground">{item.energy}%</span>
-                        </div>
-                        <div className="w-full h-1 bg-border/40 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-500"
-                            style={{ width: `${item.energy}%` }}
-                          ></div>
-                        </div>
-                      </div>
+
 
                       {item.relatedIds.length > 0 && (
-                        <div className="mt-4 pt-3 border-t border-border/40">
-                          <div className="flex items-center gap-1 mb-2">
-                            <LinkIcon size={10} className="text-muted-foreground" />
-                            <h4 className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
-                              Choreographed Connections
-                            </h4>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {item.relatedIds.map((relatedId) => {
-                              const relatedItem = timelineData.find(
-                                (i) => i.id === relatedId
-                              );
-                              return (
-                                <Button
-                                  key={relatedId}
-                                  variant="outline"
-                                  size="sm"
-                                  className="flex items-center h-6 px-2 py-0 text-[10px] rounded-md border-border/80 bg-transparent hover:bg-accent text-foreground transition-all"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleItem(relatedId);
-                                  }}
-                                >
-                                  {relatedItem?.title.split(" ").slice(1).join(" ")}
-                                  <ArrowRight
-                                    size={8}
-                                    className="ml-1 text-muted-foreground"
-                                  />
-                                </Button>
-                              );
-                            })}
-                          </div>
+                        <div className="mt-4 pt-3 border-t border-border/40 space-y-3">
+                          {/* Predecessors (Triggered By) */}
+                          {item.relatedIds.some(id => id < item.id) && (
+                            <div>
+                              <div className="flex items-center gap-1 mb-1.5">
+                                <LinkIcon size={10} className="text-muted-foreground" />
+                                <h4 className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground font-mono">
+                                  Triggered By (Incoming Flow)
+                                </h4>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {item.relatedIds.filter(id => id < item.id).map((relatedId) => {
+                                  const relatedItem = timelineData.find((i) => i.id === relatedId);
+                                  return (
+                                    <Button
+                                      key={relatedId}
+                                      variant="outline"
+                                      size="sm"
+                                      className="flex items-center h-6 px-2 py-0 text-[10px] rounded-md border-border/80 bg-transparent hover:bg-accent text-foreground transition-all"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleItem(relatedId);
+                                      }}
+                                    >
+                                      <ArrowLeft size={8} className="mr-1 text-muted-foreground" />
+                                      {relatedItem?.title.split(" ").slice(1).join(" ")}
+                                    </Button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Successors (Triggers Next) */}
+                          {item.relatedIds.some(id => id > item.id) && (
+                            <div>
+                              <div className="flex items-center gap-1 mb-1.5">
+                                <LinkIcon size={10} className="text-cyan-400" />
+                                <h4 className="text-[9px] uppercase tracking-wider font-bold text-cyan-400 font-mono">
+                                  Triggers Next (Outgoing Flow)
+                                </h4>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {item.relatedIds.filter(id => id > item.id).map((relatedId) => {
+                                  const relatedItem = timelineData.find((i) => i.id === relatedId);
+                                  return (
+                                    <Button
+                                      key={relatedId}
+                                      variant="outline"
+                                      size="sm"
+                                      className="flex items-center h-6 px-2 py-0 text-[10px] rounded-md border-border/80 bg-transparent hover:bg-accent text-foreground transition-all"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleItem(relatedId);
+                                      }}
+                                    >
+                                      {relatedItem?.title.split(" ").slice(1).join(" ")}
+                                      <ArrowRight size={8} className="ml-1 text-muted-foreground" />
+                                    </Button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </CardContent>

@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Cpu, DollarSign, Package, ShieldCheck, Truck, RefreshCw } from "lucide-react";
+import { Cpu, DollarSign, Package, ShieldCheck, Truck, RefreshCw, Wifi, Radio, Database } from "lucide-react";
 import { useAppSelector } from "@/store/hooks";
-import { selectEventLog } from "@/features/telemetry/telemetry.slice";
+import { selectEventLog, selectConnectionStatus } from "@/features/telemetry/telemetry.slice";
 import { selectAllNotifications } from "@/features/notifications/notifications.slice";
+import { selectHealthData } from "@/features/health/health.slice";
 
 interface TickerItem {
   id: string;
@@ -16,7 +17,12 @@ interface TickerItem {
 export function EventTicker() {
   const liveLogs = useAppSelector(selectEventLog);
   const dbNotifications = useAppSelector(selectAllNotifications);
+  const connectionStatus = useAppSelector(selectConnectionStatus);
+  const healthData = useAppSelector(selectHealthData);
   const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
+
+  const dbStatus = healthData?.details?.database?.status === "up" ? "healthy" : "unhealthy";
+  const rmqStatus = healthData?.details?.rabbitmq?.status === "up" ? "healthy" : "unhealthy";
 
   useEffect(() => {
     if (liveLogs.length > 0) {
@@ -46,9 +52,39 @@ export function EventTicker() {
         }))
       );
     } else {
-      setTickerItems([]);
+      const timeStr = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      setTickerItems([
+        {
+          id: "sys-ws",
+          eventType: "WS_BRIDGE",
+          message: `WebSocket channel status: ${connectionStatus.toUpperCase()}`,
+          time: timeStr,
+        },
+        {
+          id: "sys-amqp",
+          eventType: "AMQP_BUS",
+          message: `RabbitMQ event router status: ${rmqStatus.toUpperCase()}`,
+          time: timeStr,
+        },
+        {
+          id: "sys-db",
+          eventType: "DATABASE",
+          message: `Metrics database status: ${dbStatus.toUpperCase()}`,
+          time: timeStr,
+        },
+        {
+          id: "sys-standby",
+          eventType: "STANDBY",
+          message: "Observability channel active - Awaiting transaction events...",
+          time: timeStr,
+        },
+      ]);
     }
-  }, [liveLogs, dbNotifications]);
+  }, [liveLogs, dbNotifications, connectionStatus, rmqStatus, dbStatus]);
 
   const getEventIcon = (type: string) => {
     const t = type.toLowerCase();
@@ -56,20 +92,23 @@ export function EventTicker() {
     if (t.includes("reserved") || t.includes("inventory")) return <Package className="h-3.5 w-3.5 text-emerald-400" />;
     if (t.includes("payment")) return <DollarSign className="h-3.5 w-3.5 text-violet-400" />;
     if (t.includes("ship") || t.includes("truck")) return <Truck className="h-3.5 w-3.5 text-amber-400" />;
+    if (t.includes("ws_bridge")) return <Wifi className="h-3.5 w-3.5 text-cyan-400" />;
+    if (t.includes("amqp_bus")) return <Radio className="h-3.5 w-3.5 text-emerald-400" />;
+    if (t.includes("database")) return <Database className="h-3.5 w-3.5 text-violet-400" />;
     return <ShieldCheck className="h-3.5 w-3.5 text-rose-400" />;
   };
 
   const getEventClass = (type: string) => {
     const t = type.toLowerCase();
-    if (t.includes("placed")) return "border-cyan-500/20 bg-cyan-500/5 text-cyan-400";
-    if (t.includes("reserved") || t.includes("inventory")) return "border-emerald-500/20 bg-emerald-500/5 text-emerald-400";
-    if (t.includes("payment")) return "border-violet-500/20 bg-violet-500/5 text-violet-400";
+    if (t.includes("placed") || t.includes("ws_bridge")) return "border-cyan-500/20 bg-cyan-500/5 text-cyan-400";
+    if (t.includes("reserved") || t.includes("inventory") || t.includes("amqp_bus")) return "border-emerald-500/20 bg-emerald-500/5 text-emerald-400";
+    if (t.includes("payment") || t.includes("database")) return "border-violet-500/20 bg-violet-500/5 text-violet-400";
     if (t.includes("ship") || t.includes("truck")) return "border-amber-500/20 bg-amber-500/5 text-amber-400";
     return "border-rose-500/20 bg-rose-500/5 text-rose-400";
   };
 
   return (
-    <div className="w-full border-y border-border/60 bg-card/40 backdrop-blur-sm overflow-hidden py-3.5 flex items-center relative z-20">
+    <div className="w-full bg-transparent overflow-hidden py-3.5 flex items-center relative z-20">
       {/* Absolute label badge */}
       <div className="absolute left-0 top-0 bottom-0 px-4 bg-background border-r border-border/60 flex items-center gap-1.5 z-30 shadow-[4px_0_12px_rgba(0,0,0,0.15)]">
         <RefreshCw className="h-3.5 w-3.5 text-primary animate-spin" style={{ animationDuration: "3s" }} />

@@ -32,7 +32,7 @@ interface NodeData {
 }
 
 export function ArchitectureShowcase() {
-  const [selectedLayer, setSelectedLayer] = useState<number>(2); // Default to Saga Coordinator
+  const [selectedLayer, setSelectedLayer] = useState<number>(2); // Default to Order Service
   const [isSimulating, setIsSimulating] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
   const [activeNode, setActiveNode] = useState<string | null>(null);
@@ -42,11 +42,10 @@ export function ArchitectureShowcase() {
   const [resizeKey, setResizeKey] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
-
   const stages = [
     { label: "Client Ingress", key: ["client"] },
     { label: "API Gateway", key: ["gateway"] },
-    { label: "Saga Coordinator", key: ["saga"] },
+    { label: "Order Service", key: ["saga"] },
     { label: "Message Broker", key: ["rabbitmq"] },
     { label: "Bounded Contexts", key: ["inventory", "payment", "shipping"] }
   ];
@@ -73,7 +72,7 @@ export function ArchitectureShowcase() {
       title: "API Gateway",
       subtitle: "Ingress Router",
       shortDesc: "Entrypoint routing order requests to the core engine.",
-      longDesc: "Validates incoming Rest payloads, enforces JWT auth headers, handles client rate-limits, and forwards sanitized order payload events down to the transactional Outbox of the Core Saga Coordinator.",
+      longDesc: "Validates incoming Rest payloads, enforces JWT auth headers, handles client rate-limits, and forwards sanitized order payload events down to the transactional Outbox of the Order Service.",
       color: "border-blue-500/40 bg-blue-500/5",
       textColor: "text-blue-400",
       glowColor: "rgba(59, 130, 246, 0.4)",
@@ -86,16 +85,16 @@ export function ArchitectureShowcase() {
     },
     {
       id: "saga",
-      title: "Saga Coordinator",
-      subtitle: "State Machine",
-      shortDesc: "Coordinates multi-context event transactions.",
-      longDesc: "Manages state progression via Outbox pattern. Commits the Order to PostgreSQL database and appends an outbox log in the same transaction boundary. Dispatches events asynchronously to prevent write blocks.",
+      title: "Order Service",
+      subtitle: "Order Bounded Context",
+      shortDesc: "Manages order lifecycles and triggers saga compensating events.",
+      longDesc: "Initiates transactions by creating orders (status: PLACED) in the order_schema. Publishes OrderPlacedEvent via outbox_messages. Automatically reacts to PaymentFailedEvent or InventoryReservationFailedEvent to execute compensating actions (status: CANCELLED) and fan out OrderCancelledEvent.",
       color: "border-indigo-500/40 bg-indigo-500/5",
       textColor: "text-indigo-400",
       glowColor: "rgba(99, 102, 241, 0.4)",
       techs: ["NestJS", "MikroORM", "PostgreSQL", "Outbox Relay"],
       components: [
-        { name: "Saga Manager", icon: <Database className="h-3.5 w-3.5 text-indigo-400" /> },
+        { name: "Order Controller", icon: <Database className="h-3.5 w-3.5 text-indigo-400" /> },
         { name: "Outbox Relayer", icon: <Layers className="h-3.5 w-3.5 text-indigo-400" /> },
       ],
       icon: <Database className="h-5 w-5 text-indigo-400" />,
@@ -104,14 +103,14 @@ export function ArchitectureShowcase() {
       id: "rabbitmq",
       title: "RabbitMQ Broker",
       subtitle: "Message Transport",
-      shortDesc: "Asynchronous fanout message distribution broker.",
-      longDesc: "Ensures eventual consistency and loose coupling. Relays events between isolated contexts using RabbitMQ exchange binds, dead letter queues, and consumer confirmations.",
+      shortDesc: "Asynchronous topic-based message distribution broker.",
+      longDesc: "Ensures eventual consistency and loose coupling. Relays events between isolated contexts using RabbitMQ topic exchange bindings (e.g. order-exchange, payment-exchange), dead letter queues, and consumer confirmations.",
       color: "border-amber-500/40 bg-amber-500/5",
       textColor: "text-amber-400",
       glowColor: "rgba(245, 158, 11, 0.4)",
-      techs: ["RabbitMQ", "Exchange Routers", "Dead-Letter Queues"],
+      techs: ["RabbitMQ Topic Router", "Exchange Bindings", "Dead-Letter Queues"],
       components: [
-        { name: "Fanout Exchange", icon: <Layers className="h-3.5 w-3.5 text-amber-400" /> },
+        { name: "Topic Exchanges", icon: <Layers className="h-3.5 w-3.5 text-amber-400" /> },
         { name: "Message Queues", icon: <Activity className="h-3.5 w-3.5 text-amber-400" /> },
       ],
       icon: <Layers className="h-5 w-5 text-amber-400" />,
@@ -120,14 +119,15 @@ export function ArchitectureShowcase() {
       id: "inventory",
       title: "Inventory Service",
       subtitle: "Domain Context",
-      shortDesc: "Manages physical stock allocation.",
-      longDesc: "Listens for OrderPlaced events, verifies stock availability, reserves the items, and publishes InventoryReserved or InventoryReservationFailed events.",
+      shortDesc: "Manages physical stock allocation and reservation logs.",
+      longDesc: "Listens for OrderPlacedEvent, verifies stock availability, reserves the items (status: RESERVED) in inventory_schema, and publishes InventoryReservedEvent or InventoryReservationFailedEvent via outbox.",
       color: "border-emerald-500/40 bg-emerald-500/5",
       textColor: "text-emerald-400",
       glowColor: "rgba(16, 185, 129, 0.4)",
-      techs: ["Stock Reservation", "MikroORM", "RabbitMQ Consumer"],
+      techs: ["Stock Reservation", "MikroORM", "RabbitMQ Consumer", "Transactional Inbox/Outbox"],
       components: [
-        { name: "Inventory Node", icon: <Package className="h-3.5 w-3.5 text-emerald-400" /> },
+        { name: "Stock Reservation Processor", icon: <Package className="h-3.5 w-3.5 text-emerald-400" /> },
+        { name: "Transactional Inbox (Deduplication)", icon: <Database className="h-3.5 w-3.5 text-emerald-400" /> },
       ],
       icon: <Package className="h-5 w-5 text-emerald-400" />,
     },
@@ -135,14 +135,15 @@ export function ArchitectureShowcase() {
       id: "payment",
       title: "Payment Service",
       subtitle: "Domain Context",
-      shortDesc: "Processes financial transactions.",
-      longDesc: "Listens for InventoryReserved, processes secure payments via Stripe, and publishes PaymentAuthorized or PaymentFailed events.",
+      shortDesc: "Processes financial transactions and billing authorization.",
+      longDesc: "Listens for InventoryReservedEvent, simulates payment authorization (status: COMPLETED) in payment_schema, and publishes PaymentCompletedEvent or PaymentFailedEvent via outbox.",
       color: "border-emerald-500/40 bg-emerald-500/5",
       textColor: "text-emerald-400",
       glowColor: "rgba(16, 185, 129, 0.4)",
-      techs: ["Stripe Integration", "Billing Logs", "Webhook Handler"],
+      techs: ["Deterministic Payment Simulator", "MikroORM", "RabbitMQ Consumer", "Transactional Inbox/Outbox"],
       components: [
-        { name: "Stripe Payment", icon: <CreditCard className="h-3.5 w-3.5 text-emerald-400" /> },
+        { name: "Payment Auth Simulator", icon: <CreditCard className="h-3.5 w-3.5 text-emerald-400" /> },
+        { name: "Transactional Inbox (Deduplication)", icon: <Database className="h-3.5 w-3.5 text-emerald-400" /> },
       ],
       icon: <CreditCard className="h-5 w-5 text-emerald-400" />,
     },
@@ -150,14 +151,15 @@ export function ArchitectureShowcase() {
       id: "shipping",
       title: "Shipping Service",
       subtitle: "Domain Context",
-      shortDesc: "Creates dispatch manifests.",
-      longDesc: "Generates tracking labels and manifests the shipping dispatch once payments are confirmed. Dispatches ShippingManifested to finalize the Saga.",
+      shortDesc: "Creates dispatch manifests and tracking labels.",
+      longDesc: "Generates tracking labels and manifests the shipping dispatch once payments are confirmed. Dispatches ShipmentCreatedEvent and ShipmentDeliveredEvent to transition the Saga to completion.",
       color: "border-emerald-500/40 bg-emerald-500/5",
       textColor: "text-emerald-400",
       glowColor: "rgba(16, 185, 129, 0.4)",
-      techs: ["Label Creation", "Logistics Bind", "Tracking API"],
+      techs: ["Label Creation", "Logistics Bind", "MikroORM", "Transactional Inbox/Outbox"],
       components: [
-        { name: "Shipping Node", icon: <Truck className="h-3.5 w-3.5 text-emerald-400" /> },
+        { name: "Shipment Dispatch Manager", icon: <Truck className="h-3.5 w-3.5 text-emerald-400" /> },
+        { name: "Transactional Inbox (Deduplication)", icon: <Database className="h-3.5 w-3.5 text-emerald-400" /> },
       ],
       icon: <Truck className="h-5 w-5 text-emerald-400" />,
     },
@@ -201,87 +203,100 @@ export function ArchitectureShowcase() {
           icon: "🚀",
           timestamp: "14:20:00",
           tag: "CLIENT",
-          message: "OrderPlacedEvent transaction initiated by Client Console",
+          message: "Order creation request POST /api/orders initiated by Client Console",
           colorClass: "text-cyan-600 dark:text-cyan-400",
           tagClass: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/25"
         }
       },
       {
-        time: 1500,
+        time: 1200,
         node: "gateway",
         stage: 1,
         log: {
           icon: "🔌",
           timestamp: "14:20:01",
           tag: "GATEWAY",
-          message: "Ingress HTTP payload parsed, validated & authorized by API Gateway",
+          message: "Ingress payload validated, route matched by API Gateway, forwarding request",
           colorClass: "text-blue-600 dark:text-blue-400",
           tagClass: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25"
         }
       },
       {
-        time: 3000,
+        time: 2400,
         node: "saga",
         stage: 2,
         log: {
           icon: "🧠",
-          timestamp: "14:20:03",
-          tag: "SAGA_COORD",
-          message: "SAGA Coordinator initialized orchestration instance: SAGA_TX_8a92",
+          timestamp: "14:20:02",
+          tag: "ORDER_SRV",
+          message: "Order Service persisted new order record in order_schema (status: PLACED)",
           colorClass: "text-indigo-600 dark:text-indigo-400",
           tagClass: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/25"
         }
       },
       {
-        time: 4200,
+        time: 3600,
         node: "saga",
         stage: 2,
         log: {
           icon: "💾",
-          timestamp: "14:20:04",
+          timestamp: "14:20:03",
           tag: "DB_OUTBOX",
-          message: "Order persisted to database. Appended event to PostgreSQL Transactional Outbox...",
+          message: "Saved OrderPlacedEvent to order_schema.outbox_messages inside atomic db transaction",
           colorClass: "text-indigo-500 dark:text-indigo-300 font-mono text-[10.5px]",
           tagClass: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/25"
         }
       },
       {
-        time: 5500,
+        time: 4800,
         node: "rabbitmq",
         stage: 3,
         log: {
           icon: "📮",
-          timestamp: "14:20:05",
+          timestamp: "14:20:04",
           tag: "OUTBOX_RELAY",
-          message: "Outbox Relayer polled log record and published to RabbitMQ exchange",
+          message: "CLI Outbox Relay polled outbox_messages, published event with routing key 'order.placed' to order-exchange",
           colorClass: "text-amber-600 dark:text-amber-400",
           tagClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
         }
       },
       {
-        time: 6800,
+        time: 6000,
         node: "rabbitmq",
         stage: 3,
         log: {
           icon: "🔀",
-          timestamp: "14:20:06",
+          timestamp: "14:20:05",
           tag: "BROKER",
-          message: "RabbitMQ Broker: Fanout routing message payload to bound context queues",
+          message: "RabbitMQ Broker: Topic Exchange order-exchange routed order.placed event to bound queues",
           colorClass: "text-amber-500 dark:text-amber-300 font-mono text-[10.5px]",
           tagClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
         }
       },
       {
-        time: 8200,
+        time: 7200,
         node: "inventory",
         stage: 4,
         log: {
           icon: "📦",
-          timestamp: "14:20:08",
+          timestamp: "14:20:06",
           tag: "INVENTORY",
-          message: "Allocated item stock and published 'InventoryReserved'",
+          message: "Inventory Service consumed order.placed, checked stock, reserved items (status: RESERVED) in inventory_schema, and stored InventoryReservedEvent in outbox",
           colorClass: "text-emerald-600 dark:text-emerald-400",
           tagClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
+        }
+      },
+      {
+        time: 8400,
+        node: "rabbitmq",
+        stage: 3,
+        log: {
+          icon: "📮",
+          timestamp: "14:20:07",
+          tag: "OUTBOX_RELAY",
+          message: "CLI Outbox Relay published InventoryReservedEvent to inventory-exchange with key 'inventory.reserved'",
+          colorClass: "text-amber-600 dark:text-amber-400",
+          tagClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
         }
       },
       {
@@ -290,35 +305,74 @@ export function ArchitectureShowcase() {
         stage: 4,
         log: {
           icon: "💳",
-          timestamp: "14:20:09",
+          timestamp: "14:20:08",
           tag: "PAYMENT",
-          message: "Secure Stripe charge authorization captured successfully",
+          message: "Payment Service consumed inventory.reserved, authorized Stripe transaction (status: COMPLETED) in payment_schema, and stored PaymentCompletedEvent in outbox",
           colorClass: "text-emerald-600 dark:text-emerald-400",
           tagClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
         }
       },
       {
-        time: 11000,
+        time: 10800,
+        node: "rabbitmq",
+        stage: 3,
+        log: {
+          icon: "📮",
+          timestamp: "14:20:09",
+          tag: "OUTBOX_RELAY",
+          message: "CLI Outbox Relay published PaymentCompletedEvent to payment-exchange with key 'payment.completed'",
+          colorClass: "text-amber-600 dark:text-amber-400",
+          tagClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
+        }
+      },
+      {
+        time: 12000,
+        node: "saga",
+        stage: 2,
+        log: {
+          icon: "🧠",
+          timestamp: "14:20:10",
+          tag: "ORDER_SRV",
+          message: "Order Service consumed payment.completed, updated order record status to PAID in order_schema",
+          colorClass: "text-indigo-600 dark:text-indigo-400",
+          tagClass: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/25"
+        }
+      },
+      {
+        time: 13200,
         node: "shipping",
         stage: 4,
         log: {
           icon: "🚚",
           timestamp: "14:20:11",
           tag: "SHIPPING",
-          message: "Generated logistics manifest & dispatched labeling API",
+          message: "Shipping Service consumed payment.completed, created pending shipment (status: PENDING) in shipping_schema, and stored ShipmentCreatedEvent in outbox",
           colorClass: "text-purple-600 dark:text-purple-400",
           tagClass: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25"
         }
       },
       {
-        time: 12200,
-        node: null,
-        stage: 4,
+        time: 14400,
+        node: "rabbitmq",
+        stage: 3,
+        log: {
+          icon: "📮",
+          timestamp: "14:20:12",
+          tag: "OUTBOX_RELAY",
+          message: "CLI Outbox Relay published ShipmentCreatedEvent to shipping-exchange with key 'shipping.created'",
+          colorClass: "text-amber-600 dark:text-amber-400",
+          tagClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
+        }
+      },
+      {
+        time: 15600,
+        node: "saga",
+        stage: 2,
         log: {
           icon: "✅",
-          timestamp: "14:20:12",
-          tag: "SUCCESS",
-          message: "All bounded contexts reconciled. Distributed transaction complete.",
+          timestamp: "14:20:13",
+          tag: "ORDER_SRV",
+          message: "Order Service consumed ShipmentCreatedEvent and updated order status to SHIPPED. Saga successfully reconciled.",
           colorClass: "text-emerald-600 dark:text-emerald-400 font-bold",
           tagClass: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/35 shadow-sm"
         }
@@ -342,7 +396,7 @@ export function ArchitectureShowcase() {
     setTimeout(() => {
       setIsSimulating(false);
       setCurrentStage(-1);
-    }, 13000);
+    }, 17000);
   };
 
   // Helper to calculate exact coordinates for curves between elements
@@ -603,7 +657,7 @@ export function ArchitectureShowcase() {
                 })}
               </div>
 
-              {/* Col 2: Orchestrator (Saga Engine) */}
+              {/* Col 2: Order Service (Saga Choreography) */}
               <div className="flex flex-col justify-center">
                 {nodes.slice(2, 3).map((n) => {
                   const isNodeActive = activeNode === n.id;

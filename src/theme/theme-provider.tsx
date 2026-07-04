@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 
-type Theme = "obsidian" | "midnight" | "steel";
+type Theme = "light" | "dark";
 
 interface ThemeContextType {
   theme: string;
@@ -12,20 +12,20 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<string>("obsidian");
+  const [theme, setThemeState] = useState<string>("light");
 
   // Read from localStorage on mount (client-only)
   useEffect(() => {
     try {
       const savedTheme = localStorage.getItem("theme") as Theme;
-      if (savedTheme && ["obsidian", "midnight", "steel"].includes(savedTheme)) {
+      if (savedTheme && ["light", "dark"].includes(savedTheme)) {
         setThemeState(savedTheme);
         document.documentElement.className = savedTheme;
         document.documentElement.setAttribute("data-theme", savedTheme);
       } else {
-        // Default to obsidian
-        document.documentElement.className = "obsidian";
-        document.documentElement.setAttribute("data-theme", "obsidian");
+        // Default to light
+        document.documentElement.className = "light";
+        document.documentElement.setAttribute("data-theme", "light");
       }
     } catch (e) {
       console.warn("Failed to access localStorage for theme settings:", e);
@@ -33,7 +33,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setTheme = (newTheme: string) => {
-    if (!["obsidian", "midnight", "steel"].includes(newTheme)) return;
+    if (!["light", "dark"].includes(newTheme)) return;
     try {
       setThemeState(newTheme);
       localStorage.setItem("theme", newTheme);

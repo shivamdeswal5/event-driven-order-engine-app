@@ -29,6 +29,7 @@ import {
   RefreshCw,
   Copy,
   Check,
+  ChevronDown,
 } from "lucide-react";
 
 export function OrderPlayground() {
@@ -51,6 +52,15 @@ export function OrderPlayground() {
   const [quantity, setQuantity] = useState(1);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    const handleOutsideClick = () => setIsDropdownOpen(false);
+    document.addEventListener("click", handleOutsideClick);
+    return () => document.removeEventListener("click", handleOutsideClick);
+  }, [isDropdownOpen]);
 
   // Action Loading States (Per-order ID tracking)
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
@@ -196,10 +206,10 @@ export function OrderPlayground() {
   };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 w-full max-w-7xl mx-auto">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full max-w-7xl mx-auto">
       {/* LEFT COLUMN: Place Order Form */}
-      <div className="xl:col-span-5 flex flex-col gap-6">
-        <div className="border border-border bg-card/45 backdrop-blur-md rounded-2xl p-6 shadow-xl relative overflow-hidden">
+      <div className="lg:col-span-5 flex flex-col">
+        <div className="border border-border bg-card/45 backdrop-blur-md rounded-2xl p-6 shadow-xl relative overflow-hidden h-full flex flex-col">
           <div className="flex items-center gap-2 mb-4">
             <ShoppingCart className="h-5 w-5 text-primary" />
             <h2 className="text-lg font-bold text-foreground font-mono">
@@ -207,7 +217,7 @@ export function OrderPlayground() {
             </h2>
           </div>
 
-          <form onSubmit={handlePlaceOrder} className="space-y-4">
+          <form onSubmit={handlePlaceOrder} className="space-y-4 flex-1 flex flex-col justify-between">
             {/* Customer ID */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-center">
@@ -222,36 +232,75 @@ export function OrderPlayground() {
                   Regen UUID
                 </button>
               </div>
-              <Input
+              <input
                 type="text"
                 required
                 value={customerId}
                 onChange={(e) => setCustomerId(e.target.value)}
-                className="bg-background/50 border-border/80 focus:border-primary font-mono text-xs"
+                className="w-full h-10 px-3 rounded-lg border border-border/80 bg-background/50 text-xs font-mono text-foreground placeholder:text-muted-foreground/60 transition-all outline-none focus:border-primary focus:ring-1 focus:ring-primary focus:bg-background/80"
                 placeholder="550e8400-e29b-41d4-a716-446655440000"
               />
             </div>
 
             {/* Product Selector */}
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 relative">
               <label className="text-xs font-semibold text-muted-foreground uppercase font-mono">
                 Product Catalog Selector
               </label>
               <div className="relative">
-                <select
-                  value={selectedProductId}
-                  onChange={(e) => setSelectedProductId(e.target.value)}
-                  className="w-full h-10 px-3 rounded-lg border border-border/80 bg-background/50 text-sm font-mono text-foreground focus:outline-none focus:border-primary appearance-none cursor-pointer"
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsDropdownOpen(!isDropdownOpen);
+                  }}
+                  className={`w-full h-10 px-3 pr-10 rounded-lg border bg-background/50 text-left text-xs font-mono text-foreground transition-all outline-none cursor-pointer flex items-center justify-between focus:border-primary focus:ring-1 focus:ring-primary focus:bg-background/80 ${
+                    isDropdownOpen
+                      ? "border-primary ring-1 ring-primary bg-background/80"
+                      : "border-border/80 hover:border-border"
+                  }`}
                 >
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id} className="bg-card text-foreground">
-                      {p.name} ({p.sku}) — ${p.unitPrice.toFixed(2)} [Qty: {p.stockQuantity}]
-                    </option>
-                  ))}
-                </select>
-                <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-muted-foreground text-xs font-mono">
-                  ▼
-                </div>
+                  <span className="truncate">
+                    {selectedProduct
+                      ? `${selectedProduct.name} (${selectedProduct.sku}) — $${selectedProduct.unitPrice.toFixed(2)} [Qty: ${selectedProduct.stockQuantity}]`
+                      : "Select a product..."}
+                  </span>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground/70 shrink-0 transition-transform duration-200 ${isDropdownOpen ? "transform rotate-180 text-primary" : ""}`} />
+                </button>
+
+                {isDropdownOpen && (
+                  <div className="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto rounded-lg border border-border bg-popover/95 backdrop-blur-md p-1 shadow-lg font-mono text-xs text-popover-foreground scrollbar-thin scrollbar-thumb-border animate-in fade-in-50 zoom-in-95 duration-100">
+                    {products.length === 0 ? (
+                      <div className="p-2 text-center text-muted-foreground">No products available</div>
+                    ) : (
+                      products.map((p) => {
+                        const isSelected = p.id === selectedProductId;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedProductId(p.id);
+                              setIsDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-md transition-colors cursor-pointer hover:bg-muted/80 flex flex-col gap-0.5 ${
+                              isSelected ? "bg-primary/10 text-primary font-bold" : "text-foreground"
+                            }`}
+                          >
+                            <div className="flex justify-between items-center w-full gap-2">
+                              <span className="truncate font-bold">{p.name}</span>
+                              <span className="text-muted-foreground text-[9px] shrink-0">{p.sku}</span>
+                            </div>
+                            <div className="flex justify-between items-center w-full text-[9px] text-muted-foreground">
+                              <span>${p.unitPrice.toFixed(2)}</span>
+                              <span>Stock: {p.stockQuantity}</span>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -260,13 +309,13 @@ export function OrderPlayground() {
               <label className="text-xs font-semibold text-muted-foreground uppercase font-mono">
                 Order Quantity
               </label>
-              <Input
+              <input
                 type="number"
                 min="1"
                 required
                 value={quantity}
                 onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                className="bg-background/50 border-border/80 focus:border-primary font-mono text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-border/80 bg-background/50 text-xs font-mono text-foreground placeholder:text-muted-foreground/60 transition-all outline-none focus:border-primary focus:ring-1 focus:ring-primary focus:bg-background/80"
               />
             </div>
 
@@ -293,7 +342,7 @@ export function OrderPlayground() {
               <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
               <div>
                 <strong className="text-amber-300">Payment Failure Simulation Rule:</strong> If
-                the total checkout price ends in <span className="underline font-bold text-amber-300">.99</span>, the Payment Service mock handler will deliberately simulate a stripe gateway failure. The Saga Orchestrator will run compensation (releasing reserved inventory items & cancelling the order).
+                the total checkout price ends in <span className="underline font-bold text-amber-300">.99</span>, the Payment Service mock handler will deliberately simulate a stripe gateway failure. The Saga Choreography will execute compensating transactions (releasing reserved inventory items & cancelling the order).
               </div>
             </div>
 
@@ -317,8 +366,8 @@ export function OrderPlayground() {
       </div>
 
       {/* RIGHT COLUMN: Active Orders List */}
-      <div className="xl:col-span-7 flex flex-col gap-6">
-        <div className="border border-border bg-card/45 backdrop-blur-md rounded-2xl p-6 shadow-xl flex flex-col min-h-[500px]">
+      <div className="lg:col-span-7 flex flex-col">
+        <div className="border border-border bg-card/45 backdrop-blur-md rounded-2xl p-6 shadow-xl flex flex-col h-full">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <RefreshCw className="h-5 w-5 text-primary" />
@@ -336,7 +385,7 @@ export function OrderPlayground() {
           </div>
 
           {/* Table Container */}
-          <div className="flex-1 overflow-x-auto">
+          <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-border">
             {isOrdersLoading && orders.length === 0 ? (
               <div className="h-full flex items-center justify-center flex-col gap-2.5 py-20 text-muted-foreground font-mono text-xs">
                 <Loader2 className="h-8 w-8 text-primary animate-spin" />
