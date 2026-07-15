@@ -28,10 +28,13 @@ export const ordersSlice = createAppSlice({
     },
   },
   selectors: {
-    selectAllOrders: (state) => state.orders,
+    selectAllOrders: (state) =>
+      Array.isArray(state.orders) ? state.orders : [],
     selectActiveOrderId: (state) => state.activeOrderId,
     selectActiveOrder: (state) =>
-      state.orders.find((o) => o.id === state.activeOrderId) ?? null,
+      Array.isArray(state.orders)
+        ? state.orders.find((o) => o.id === state.activeOrderId) ?? null
+        : null,
     selectOrdersLoading: (state) => state.loading,
   },
   extraReducers: (builder) => {

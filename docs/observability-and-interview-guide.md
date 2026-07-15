@@ -57,15 +57,18 @@ The Apex Console is designed to visualize this distributed event lifecycle in re
 └───────────────────────┘         └───────────────────────┘
 ```
 
-1. **Active WebSocket Subscription**:
+1. **Two-channel WebSocket delivery**:
    - The frontend connects to the Socket.io namespace `/notifications`.
-   - When an order is placed, the client emits `subscribeToOrder` with the `orderId` to listen to room-specific saga phase updates.
+   - On connect, the server auto-joins every client to the **`saga:firehose`** room. Events on the **`saga-event`** channel drive the **topology visualizer** and **Event Flow Log** — the complete saga stream with no per-order join race.
+   - For order-scoped UX, the client additionally emits `subscribeToOrder` with an `orderId`; events on the **`notification`** channel in room `order:<id>` drive **toasts only**.
+   - **Cross-process delivery:** both channels are produced by the notification consumer in a **separate backend process** from the WebSocket server. They reach the browser through a **Redis Socket.io backplane** (`@socket.io/redis-adapter` / `-emitter`). Without Redis, live events are silently dropped. Full write-up: backend `docs/redis-setup.md` and `docs/websocket-setup.md`.
 2. **React Flow Dynamic Topology Rendering**:
-   - The visualizer displays the exact backend RabbitMQ topology, including all exchanges (`order-exchange`, `inventory-exchange`, etc.), queues, and binding keys.
-   - React Flow nodes and edges are mapped dynamically to state selectors. When a new WebSocket notification event arrives, the specific path (Exchange → Queue) pulses to reflect the message routing in real-time.
+   - The visualizer displays the backend RabbitMQ topology: exchanges, queues, routing keys, and consumer swimlanes.
+   - When a `saga-event` arrives, matching edges pulse for ~1.8s and an entry is appended to the Event Flow Log sidebar. Event keys strip the `Event` suffix before lookup (e.g. `OrderPlacedEvent` → `orderplaced`).
 
 3. **Event-Driven Cache Invalidation**:
-   - The UI does not use interval polling to fetch active orders or notifications. Instead, it uses a hybrid approach: HTTP `GET` requests on initial component mount to load existing state, followed by WebSocket updates for real-time changes. When a relevant WebSocket event is received, specific data segments are re-fetched. This is the industry-standard approach for real-time dashboards at companies like Stripe and Netflix.
+   - On each `saga-event`, `useTelemetrySocket` re-fetches the affected order, product catalog, and notification feed. Toasts fire on `notification` only.
+   - **[Current implementation note]** A **3-second polling fallback** (`listOrdersAction` + `listNotificationsAction`) still runs alongside WebSocket invalidation as a safety net.
 
 ---
 
@@ -73,7 +76,7 @@ The Apex Console is designed to visualize this distributed event lifecycle in re
 
 ### Q1: Why did you choose Socket.io instead of native WebSockets for this console?
 **Answer:**
-"Socket.io was chosen for its production-grade resilience features. It provides **automatic reconnection** out of the box if connection is lost, and supports **HTTP long-polling fallback** in environments where WebSockets are blocked by corporate proxies or firewalls. Furthermore, it supports **namespaces and rooms**, allowing the client to subscribe to specific order rooms (e.g., `socket.emit('subscribeToOrder', { orderId })`) directly, reducing network chatter by only receiving events relevant to the active tracking view."
+"Socket.io was chosen for its production-grade resilience features: automatic reconnection, HTTP long-polling fallback behind corporate proxies, and first-class **namespaces and rooms**. We use two delivery patterns on the same namespace: a **`saga:firehose` room** (auto-joined on connect) that streams every saga event to the observability console via `saga-event`, and **per-order rooms** (`order:<id>`) for targeted `notification` toasts. That split keeps the topology complete without racing the saga's first events, while still allowing order-scoped UX."
 
 ---
 
@@ -88,17 +91,23 @@ The Apex Console is designed to visualize this distributed event lifecycle in re
 
 ### Q3: Why don't you use regular interval polling to check for saga updates?
 **Answer:**
-"Interval polling creates unnecessary load on the database and introduces latency. Instead, we use an **Event-Driven Cache Invalidation** approach. The frontend fetches the initial state via a REST HTTP `GET` call on page mount. It then subscribes to a specific order's WebSocket room. We only trigger subsequent `GET` requests when the WebSocket notifies us of a state change for that specific order. This guarantees zero-latency UI updates while minimizing backend traffic. It's the same pattern used by high-performance financial dashboards."
+"Interval polling creates unnecessary load and latency. Our design is **event-driven cache invalidation**: REST on mount for initial state, then **`saga-event`** WebSocket pushes to drive the topology and trigger targeted re-fetches (order, catalog, notifications). Per-order **`notification`** events handle toasts only. A short 3-second polling fallback still runs as a safety net, but the primary path is push-based — the same pattern used by high-performance financial dashboards."
 
 ---
 
 ### Q4: If the RabbitMQ consumer fails mid-saga (e.g., Inventory is out of stock), how does the frontend console visualize it?
 **Answer:**
-"When a consumer processing step fails, the affected service (e.g. Inventory Service) writes an `inventory.reservation-failed` event to its outbox using the `shared_schema` outbox table. Once dispatched by the cron worker, this event routes through the `inventory-exchange` to the `order-queue`, triggering the Order saga to initiate compensations. 
-The frontend WebSocket stream receives this exception event instantly via the `notification-queue` (which acts as a terminal listener to all exchanges). The UI updates the saga timeline to branch into the compensation path (e.g., `CANCELLED`), and the **Topology Visualizer** highlights the error routing path, providing instant visual feedback on distributed fault recovery."
+"When a consumer processing step fails, the affected service (e.g. Inventory Service) writes an `inventory.reservation-failed` event to **its own** `outbox_messages` table inside its module schema (`inventory_schema`) — each module owns its own outbox/inbox tables rather than sharing a central one. Once dispatched by the cron worker, this event routes through the `inventory-exchange` to the `order-queue`, triggering the Order saga to initiate compensations. 
+The frontend **`saga-event`** firehose receives this exception event instantly via the `notification-queue`. The UI updates the saga timeline to branch into the compensation path (e.g., `CANCELLED`), and the **Topology Visualizer** highlights the error routing path.
 
 ---
 
-### Q5: How is the folder structure organized, and why?
+### Q5: Why does the order stay PAID after shipment is created? When does it become SHIPPED?
+**Answer:**
+"This is intentional saga choreography. `PaymentCompletedEvent` causes Shipping to create a shipment in `PENDING` state and emit `ShipmentCreatedEvent`, but the **Order module does not consume that event** — the order stays `PAID` awaiting operator dispatch. When the operator calls `POST /api/shipments/:orderId/ship`, Shipping emits `ShipmentShippedEvent`, which the Order module consumes to transition to `SHIPPED`. Deliver works the same way via `ShipmentDeliveredEvent`. This keeps shipment state and order state synchronized and mirrors how real courier updates arrive asynchronously."
+
+---
+
+### Q6: How is the folder structure organized, and why?
 **Answer:**
 "The frontend follows a strict **Vertical Slice Architecture** inspired by the backend's modular structure. Feature domains (such as `telemetry`, `catalog`, `orders`, and `ui`) have their own encapsulated directory (`src/features/<domain>/`) containing their private components, Redux slices, types, and APIs. This ensures that features are highly cohesive, easy to locate, and completely decoupled from other parts of the codebase, which scales extremely well in large MNC engineering teams."

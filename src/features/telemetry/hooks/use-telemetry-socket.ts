@@ -8,6 +8,7 @@ import {
   addNotification,
   WebSocketNotification,
 } from "../telemetry.slice";
+import { addToast } from "@/features/ui/ui.slice";
 import { selectAllOrders } from "@/features/orders/orders.slice";
 import { getOrderAction } from "@/features/orders/get-order/get-order.action";
 import { listProductsAction } from "@/features/catalog/list-products/list-products.action";
@@ -27,7 +28,6 @@ export function useTelemetrySocket() {
 
     const onConnect = () => {
       dispatch(setConnectionStatus("connected"));
-      // Clear tracked subscriptions so we re-subscribe to all on reconnect
       subscribedOrdersRef.current.clear();
       orders.forEach((order) => {
         socket.emit("subscribeToOrder", { orderId: order.id });
@@ -39,22 +39,44 @@ export function useTelemetrySocket() {
       dispatch(setConnectionStatus("disconnected"));
     };
 
+    // Targeted, order-scoped channel: only fires for orders this client
+    // subscribed to. Used purely for user-facing toasts ("my order updated").
     const onNotification = (data: WebSocketNotification) => {
-      // Add real-time event to telemetry slice log
-      dispatch(addNotification(data));
+      const evLower = data.eventType.toLowerCase();
+      let type: "success" | "error" | "info" = "info";
+      if (evLower.includes("fail") || evLower.includes("cancel") || evLower.includes("exception")) {
+        type = "error";
+      } else if (evLower.includes("reserve") || evLower.includes("complete") || evLower.includes("deliver") || evLower.includes("ship") || evLower.includes("create")) {
+        type = "success";
+      }
 
-      // Trigger event-driven cache invalidations:
-      // 1. Re-fetch the specific order to update its status/saga state
-      dispatch(getOrderAction(data.orderId));
-      // 2. Re-fetch catalog products to update stock quantities
+      dispatch(
+        addToast({
+          type,
+          title: data.eventType.replace(/([A-Z])/g, " $1").trim(), // EventTypeCamel -> Event Type Camel
+          message: data.message,
+        })
+      );
+    };
+
+    // Observability firehose: fires for EVERY saga event regardless of order
+    // subscriptions. This is the reliable, complete stream that drives the
+    // topology / event-flow log and keeps derived state fresh.
+    const onSagaEvent = (data: WebSocketNotification) => {
+      // 1. Append to the live telemetry log (powers the topology animation)
+      dispatch(addNotification(data));
+      // 2. Re-fetch the specific order to update its status/saga state
+      if (data.orderId) dispatch(getOrderAction(data.orderId));
+      // 3. Re-fetch catalog products to update stock quantities
       dispatch(listProductsAction());
-      // 3. Re-fetch notification feed list
+      // 4. Re-fetch notification feed list
       dispatch(listNotificationsAction({ limit: 50 }));
     };
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("notification", onNotification);
+    socket.on("saga-event", onSagaEvent);
 
     // Fallback if already connected
     if (socket.connected) {
@@ -65,6 +87,7 @@ export function useTelemetrySocket() {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("notification", onNotification);
+      socket.off("saga-event", onSagaEvent);
       closeTelemetrySocket();
     };
   }, [dispatch]);

@@ -1,89 +1,21 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { ArrowRight, ArrowLeft, Link as LinkIcon, Zap, ShoppingCart, Package, CreditCard, Truck, CheckCircle2 } from "lucide-react";
+import { ArrowRight, ArrowLeft, Link as LinkIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { defaultTimelineData } from "./default-timeline-data";
+import type { RadialOrbitalTimelineProps, TimelineItem } from "./types";
 
-export interface TimelineItem {
-  id: number;
-  title: string;
-  date: string;
-  content: string;
-  category: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  relatedIds: number[];
-  status: "completed" | "in-progress" | "pending";
-  energy: number;
-}
-
-interface RadialOrbitalTimelineProps {
-  timelineData?: TimelineItem[];
-}
-
-const defaultTimelineData: TimelineItem[] = [
-  {
-    id: 1,
-    title: "1. Order Placed",
-    date: "Step 1",
-    content: "Order Service receives order request, persists Order entity (status: PLACED) to order_schema, and stores OrderPlacedEvent in the outbox_messages table in the same transaction.",
-    category: "Order Context",
-    icon: ShoppingCart,
-    relatedIds: [2],
-    status: "completed",
-    energy: 100,
-  },
-  {
-    id: 2,
-    title: "2. Inventory Reserved",
-    date: "Step 2",
-    content: "Inventory Service consumes order.placed, checks stock, decrements stock_quantity, increases reserved_quantity, saves Reservation (status: RESERVED) to inventory_schema, and dispatches InventoryReservedEvent.",
-    category: "Inventory Context",
-    icon: Package,
-    relatedIds: [1, 3],
-    status: "completed",
-    energy: 95,
-  },
-  {
-    id: 3,
-    title: "3. Payment Completed",
-    date: "Step 3",
-    content: "Payment Service consumes inventory.reserved, simulates authorization (fails on amount ending in .99), creates Payment (status: COMPLETED) in payment_schema, and saves PaymentCompletedEvent in the transactional outbox.",
-    category: "Payment Context",
-    icon: CreditCard,
-    relatedIds: [2, 4],
-    status: "completed",
-    energy: 98,
-  },
-  {
-    id: 4,
-    title: "4. Shipment Created",
-    date: "Step 4",
-    content: "Shipping Service consumes payment.completed, schedules delivery, creates Shipment (status: PENDING) in shipping_schema, and dispatches ShipmentCreatedEvent via the Outbox Relay.",
-    category: "Shipping Context",
-    icon: Truck,
-    relatedIds: [3, 5],
-    status: "in-progress",
-    energy: 90,
-  },
-  {
-    id: 5,
-    title: "5. Eventual Consistency",
-    date: "Step 5",
-    content: "Order Service consumes ShipmentCreatedEvent and transitions order status to SHIPPED. When the shipment is delivered, ShipmentDeliveredEvent transitions the order status to DELIVERED, completing the decentralized saga.",
-    category: "Success Context",
-    icon: CheckCircle2,
-    relatedIds: [4],
-    status: "pending",
-    energy: 99,
-  },
-];
+export type { TimelineItem, RadialOrbitalTimelineProps } from "./types";
 
 export default function RadialOrbitalTimeline({
   timelineData = defaultTimelineData,
 }: RadialOrbitalTimelineProps) {
-  const [expandedItems, setExpandedItems] = useState<Record<number, boolean>>({});
+  const [expandedItems, setExpandedItems] = useState<Record<number, boolean>>(
+    {}
+  );
   const [viewMode] = useState<"orbital">("orbital");
   const [rotationAngle, setRotationAngle] = useState<number>(0);
   const [autoRotate, setAutoRotate] = useState<boolean>(true);
@@ -116,7 +48,6 @@ export default function RadialOrbitalTimeline({
     const totalNodes = timelineData.length;
     const targetAngle = (nodeIndex / totalNodes) * 360;
 
-    // Direct the rotation to align the clicked node to the top/front focus (270 degrees)
     setRotationAngle(270 - targetAngle);
   };
 
@@ -144,7 +75,7 @@ export default function RadialOrbitalTimeline({
         centerViewOnNode(id);
       } else {
         setActiveNodeId(null);
-        setAutoRotate(true);    
+        setAutoRotate(true);
         setPulseEffect({});
       }
 
@@ -214,8 +145,9 @@ export default function RadialOrbitalTimeline({
       onClick={handleContainerClick}
     >
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-0">
-        {/* Dynamic expanding gradient ripple and rings animation */}
-        <style dangerouslySetInnerHTML={{ __html: `
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
           @keyframes sagaRipple {
             0% {
               transform: scale(0.16);
@@ -229,21 +161,23 @@ export default function RadialOrbitalTimeline({
               opacity: 0;
             }
           }
-        ` }} />
-
-        {/* Wave & Ring Set 1 */}
-        <div 
-          className="absolute w-[750px] h-[750px] rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.35)_0%,rgba(79,70,229,0.18)_35%,rgba(139,92,246,0.05)_65%,transparent_80%)] border border-primary/20" 
-          style={{ animation: 'sagaRipple 10s cubic-bezier(0.15, 0.85, 0.3, 1) infinite' }} 
+        `,
+          }}
         />
-        
-        {/* Wave & Ring Set 2 (Phase Offset) */}
-        <div 
-          className="absolute w-[750px] h-[750px] rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.35)_0%,rgba(79,70,229,0.18)_35%,rgba(139,92,246,0.05)_65%,transparent_80%)] border border-violet-500/15" 
-          style={{ 
-            animation: 'sagaRipple 10s cubic-bezier(0.15, 0.85, 0.3, 1) infinite',
-            animationDelay: '5s'
-          }} 
+
+        <div
+          className="absolute w-[750px] h-[750px] rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.35)_0%,rgba(79,70,229,0.18)_35%,rgba(139,92,246,0.05)_65%,transparent_80%)] border border-primary/20"
+          style={{
+            animation: "sagaRipple 10s cubic-bezier(0.15, 0.85, 0.3, 1) infinite",
+          }}
+        />
+
+        <div
+          className="absolute w-[750px] h-[750px] rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.35)_0%,rgba(79,70,229,0.18)_35%,rgba(139,92,246,0.05)_65%,transparent_80%)] border border-violet-500/15"
+          style={{
+            animation: "sagaRipple 10s cubic-bezier(0.15, 0.85, 0.3, 1) infinite",
+            animationDelay: "5s",
+          }}
         />
       </div>
 
@@ -255,10 +189,13 @@ export default function RadialOrbitalTimeline({
             perspective: "1200px",
           }}
         >
-          {/* Central Event Bus Hub */}
           <div className="absolute w-20 h-20 rounded-full bg-gradient-to-br from-primary via-indigo-600 to-violet-500 flex flex-col items-center justify-center z-10 shadow-[0_0_40px_rgba(99,102,241,0.25)]">
-            <div className="text-[10px] font-bold font-mono tracking-wider text-white uppercase text-center px-1">RABBITMQ</div>
-            <div className="text-[8px] font-mono text-white/70 uppercase">Event Bus</div>
+            <div className="text-[10px] font-bold font-mono tracking-wider text-white uppercase text-center px-1">
+              RABBITMQ
+            </div>
+            <div className="text-[8px] font-mono text-white/70 uppercase">
+              Event Bus
+            </div>
           </div>
 
           {timelineData.map((item, index) => {
@@ -287,10 +224,11 @@ export default function RadialOrbitalTimeline({
                   toggleItem(item.id);
                 }}
               >
-                {/* Outer halo */}
                 <div
                   className={`absolute rounded-full -inset-2 transition-opacity ${
-                    isPulsing ? "animate-pulse" : "opacity-0 group-hover:opacity-100"
+                    isPulsing
+                      ? "animate-pulse"
+                      : "opacity-0 group-hover:opacity-100"
                   }`}
                   style={{
                     background: `radial-gradient(circle, rgba(99,102,241,0.15) 0%, rgba(99,102,241,0) 70%)`,
@@ -302,7 +240,6 @@ export default function RadialOrbitalTimeline({
                   }}
                 ></div>
 
-                {/* Node circle */}
                 <div
                   className={`
                     w-12 h-12 rounded-full flex items-center justify-center relative z-10
@@ -310,8 +247,8 @@ export default function RadialOrbitalTimeline({
                       isExpanded
                         ? "bg-primary text-primary-foreground shadow-[0_0_20px_rgba(99,102,241,0.4)]"
                         : isRelated
-                        ? "bg-violet-950 text-violet-300 border-violet-400"
-                        : "bg-background border-border/80 text-foreground hover:bg-accent hover:border-primary/50"
+                          ? "bg-violet-950 text-violet-300 border-violet-400"
+                          : "bg-background border-border/80 text-foreground hover:bg-accent hover:border-primary/50"
                     }
                     border-2 transition-all duration-300 transform hover:scale-110 shadow-sm
                     ${isExpanded ? "scale-125" : ""}
@@ -320,7 +257,6 @@ export default function RadialOrbitalTimeline({
                   <Icon size={18} />
                 </div>
 
-                {/* Node Title */}
                 <div
                   className={`
                     absolute top-14 whitespace-nowrap text-center
@@ -332,7 +268,6 @@ export default function RadialOrbitalTimeline({
                   {item.title}
                 </div>
 
-                {/* Modal details block */}
                 {isExpanded && (
                   <Card className="absolute top-24 w-72 bg-card/95 border-border/60 shadow-2xl backdrop-blur-md overflow-visible select-none text-left z-50">
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-0.5 h-3 bg-primary/60"></div>
@@ -347,8 +282,8 @@ export default function RadialOrbitalTimeline({
                           {item.status === "completed"
                             ? "COMPLETE"
                             : item.status === "in-progress"
-                            ? "IN PROGRESS"
-                            : "PENDING"}
+                              ? "IN PROGRESS"
+                              : "PENDING"}
                         </Badge>
                         <span className="text-[10px] font-mono text-muted-foreground uppercase">
                           {item.category}
@@ -361,70 +296,92 @@ export default function RadialOrbitalTimeline({
                     <CardContent className="p-4 pt-0 text-xs text-muted-foreground leading-relaxed">
                       <p className="mb-4">{item.content}</p>
 
-
-
                       {item.relatedIds.length > 0 && (
                         <div className="mt-4 pt-3 border-t border-border/40 space-y-3">
-                          {/* Predecessors (Triggered By) */}
-                          {item.relatedIds.some(id => id < item.id) && (
+                          {item.relatedIds.some((id) => id < item.id) && (
                             <div>
                               <div className="flex items-center gap-1 mb-1.5">
-                                <LinkIcon size={10} className="text-muted-foreground" />
+                                <LinkIcon
+                                  size={10}
+                                  className="text-muted-foreground"
+                                />
                                 <h4 className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground font-mono">
                                   Triggered By (Incoming Flow)
                                 </h4>
                               </div>
                               <div className="flex flex-wrap gap-1.5">
-                                {item.relatedIds.filter(id => id < item.id).map((relatedId) => {
-                                  const relatedItem = timelineData.find((i) => i.id === relatedId);
-                                  return (
-                                    <Button
-                                      key={relatedId}
-                                      variant="outline"
-                                      size="sm"
-                                      className="flex items-center h-6 px-2 py-0 text-[10px] rounded-md border-border/80 bg-transparent hover:bg-accent text-foreground transition-all"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleItem(relatedId);
-                                      }}
-                                    >
-                                      <ArrowLeft size={8} className="mr-1 text-muted-foreground" />
-                                      {relatedItem?.title.split(" ").slice(1).join(" ")}
-                                    </Button>
-                                  );
-                                })}
+                                {item.relatedIds
+                                  .filter((id) => id < item.id)
+                                  .map((relatedId) => {
+                                    const relatedItem = timelineData.find(
+                                      (i) => i.id === relatedId
+                                    );
+                                    return (
+                                      <Button
+                                        key={relatedId}
+                                        variant="outline"
+                                        size="sm"
+                                        className="flex items-center h-6 px-2 py-0 text-[10px] rounded-md border-border/80 bg-transparent hover:bg-accent text-foreground transition-all"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleItem(relatedId);
+                                        }}
+                                      >
+                                        <ArrowLeft
+                                          size={8}
+                                          className="mr-1 text-muted-foreground"
+                                        />
+                                        {relatedItem?.title
+                                          .split(" ")
+                                          .slice(1)
+                                          .join(" ")}
+                                      </Button>
+                                    );
+                                  })}
                               </div>
                             </div>
                           )}
 
-                          {/* Successors (Triggers Next) */}
-                          {item.relatedIds.some(id => id > item.id) && (
+                          {item.relatedIds.some((id) => id > item.id) && (
                             <div>
                               <div className="flex items-center gap-1 mb-1.5">
-                                <LinkIcon size={10} className="text-cyan-400" />
+                                <LinkIcon
+                                  size={10}
+                                  className="text-cyan-400"
+                                />
                                 <h4 className="text-[9px] uppercase tracking-wider font-bold text-cyan-400 font-mono">
                                   Triggers Next (Outgoing Flow)
                                 </h4>
                               </div>
                               <div className="flex flex-wrap gap-1.5">
-                                {item.relatedIds.filter(id => id > item.id).map((relatedId) => {
-                                  const relatedItem = timelineData.find((i) => i.id === relatedId);
-                                  return (
-                                    <Button
-                                      key={relatedId}
-                                      variant="outline"
-                                      size="sm"
-                                      className="flex items-center h-6 px-2 py-0 text-[10px] rounded-md border-border/80 bg-transparent hover:bg-accent text-foreground transition-all"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleItem(relatedId);
-                                      }}
-                                    >
-                                      {relatedItem?.title.split(" ").slice(1).join(" ")}
-                                      <ArrowRight size={8} className="ml-1 text-muted-foreground" />
-                                    </Button>
-                                  );
-                                })}
+                                {item.relatedIds
+                                  .filter((id) => id > item.id)
+                                  .map((relatedId) => {
+                                    const relatedItem = timelineData.find(
+                                      (i) => i.id === relatedId
+                                    );
+                                    return (
+                                      <Button
+                                        key={relatedId}
+                                        variant="outline"
+                                        size="sm"
+                                        className="flex items-center h-6 px-2 py-0 text-[10px] rounded-md border-border/80 bg-transparent hover:bg-accent text-foreground transition-all"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleItem(relatedId);
+                                        }}
+                                      >
+                                        {relatedItem?.title
+                                          .split(" ")
+                                          .slice(1)
+                                          .join(" ")}
+                                        <ArrowRight
+                                          size={8}
+                                          className="ml-1 text-muted-foreground"
+                                        />
+                                      </Button>
+                                    );
+                                  })}
                               </div>
                             </div>
                           )}

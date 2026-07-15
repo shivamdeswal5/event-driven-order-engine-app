@@ -26,7 +26,15 @@ export const notificationsSlice = createAppSlice({
         state.loading = true;
       })
       .addCase(listNotificationsAction.fulfilled, (state, action) => {
-        state.notifications = action.payload.items;
+        const offset = action.payload.offset ?? 0;
+        const newItems = action.payload.items;
+        if (offset === 0) {
+          state.notifications = newItems;
+        } else {
+          const existingIds = new Set(state.notifications.map((n: NotificationResponse) => n.id));
+          const filteredNew = newItems.filter((n: NotificationResponse) => !existingIds.has(n.id));
+          state.notifications = [...state.notifications, ...filteredNew];
+        }
         state.loading = false;
       })
       .addCase(listNotificationsAction.rejected, (state) => {

@@ -2,6 +2,18 @@
 
 This document defines the screen-by-screen flows, user interactions, real-time WebSocket state mapping, and responsive behaviour for all pages of the Apex Console.
 
+> **Implementation status (2026-07-14):** This spec describes the target design. The current
+> build differs in several places, called out inline with **[Current:]** notes. The biggest
+> deviations: the console is a **responsive stacked layout inside a `max-w-[1600px]` container**
+> — shared `Header` → `StatsRibbon` → `OrderPlayground` → a tabbed **Observability Deck** that
+> switches between the live `TopologyVisualizer` and the historical `EventStream` ledger (so the
+> event log is one click away, not a long scroll below the fold); only **light/dark** themes
+> exist (not the 3-theme Obsidian/Midnight/Steel system); the landing page has **no live event
+> ticker**; the console runs a **3s polling fallback** in addition to WebSocket invalidation;
+> and Chaos Monkey controls exist only as Redux state with no UI. Real-time events reach the
+> browser via a **Redis-backed Socket.io backplane** (see backend `docs/redis-setup.md`). See
+> [implementation-plan.md](implementation-plan.md) for the full built-vs-planned breakdown.
+
 ---
 
 ## 1. Page Directory
@@ -51,6 +63,8 @@ This page is the **first impression for interviewers and hiring managers**. It m
 ---
 
 ### Section 3: Live Event Ticker
+> **[Current:] Not implemented.** The landing page does not render a live WebSocket event ticker. The sections present today are Hero, Architecture Showcase, a Radial Orbital Timeline, Pattern Cards, Tech Stack, Stats Row, and Footer CTA.
+
 - A full-width horizontal ticker bar.
 - Streams **real WebSocket events** from the backend `/notifications` namespace.
 - Falls back to animated mock events if backend is offline.
@@ -71,7 +85,7 @@ This page is the **first impression for interviewers and hiring managers**. It m
 | Order | Cyan | `OrderPlaced`, `OrderCancelled` |
 | Inventory | Emerald | `InventoryReserved`, `InventoryReservationFailed` |
 | Payment | Violet | `PaymentCompleted`, `PaymentFailed` |
-| Shipping | Amber | `ShipmentCreated`, `ShipmentDelivered` |
+| Shipping | Amber | `ShipmentCreated`, `ShipmentShipped`, `ShipmentDelivered` |
 | Notification | Rose | `NotificationSent` |
 
 ---
@@ -94,7 +108,7 @@ This page is the **first impression for interviewers and hiring managers**. It m
 ### Section 6: Tech Stack
 - Grid of technology badges.
 - Each badge on hover shows a tooltip with the **reason for choosing that technology** (not just what it does).
-- Technologies: NestJS, Next.js 15, PostgreSQL 16, MikroORM 6, RabbitMQ 4, Socket.io, Redux Toolkit, React Flow, shadcn/ui, TypeScript, Docker.
+- Technologies: NestJS, Next.js 16, PostgreSQL 16, MikroORM 6, RabbitMQ 4, Socket.io, Redux Toolkit, React Flow, shadcn/ui, TypeScript, Docker.
 
 ---
 
@@ -122,18 +136,34 @@ The full-screen engineering observatory. Developers and interviewers can place r
 
 ### Responsive Layout Strategy
 
-**Desktop (≥1280px)**: 3-column fixed-height layout. No scrolling within the viewport.
+> **[Current:]** The console is a **responsive stacked layout** inside a centered
+> `max-w-[1600px]` container (not the 3-column fixed viewport described below). Order of panels
+> top to bottom: shared `Header` → `StatsRibbon` (3 cards, `sm:grid-cols-3`) → `OrderPlayground`
+> (place order + active orders + saga tracker tabs, `lg:grid-cols-12`) → an **`ObservabilityDeck`**.
+> The deck is a segmented tab control (`_components/observability-deck`) that swaps between the
+> live `TopologyVisualizer` (with its Event Flow Log sidebar) and the historical `EventStream`
+> ledger (`_components/event-stream`, ALL/SUCCESS/ERRORS filters + infinite scroll). This
+> consolidation halves the page height and keeps the event log reachable in one click instead of
+> a long scroll. All panels collapse to single-column on mobile. The doc's original 3-column plan
+> is retained below as the design target.
+
+**Desktop (≥1280px)** *(target)*: 3-column fixed-height layout. No scrolling within the viewport.
 ```
 [ Left Panel 28% ] [ Center Canvas 44% ] [ Right Panel 28% ]
 ```
 
-**Tablet (768px–1279px)**: Top header + tabbed layout. Canvas is Tab 1, Playground is Tab 2, Telemetry is Tab 3.
+**Tablet (768px–1279px)** *(target)*: Top header + tabbed layout. Canvas is Tab 1, Playground is Tab 2, Telemetry is Tab 3.
 
-**Mobile (<768px)**: Full-screen tabs with bottom tab bar. Canvas view is simplified (no React Flow — replaced with a vertical step-indicator showing the saga state). Playground and Telemetry are full-screen tab panels.
+**Mobile (<768px)** *(target)*: Full-screen tabs with bottom tab bar. Canvas view is simplified (no React Flow — replaced with a vertical step-indicator showing the saga state). Playground and Telemetry are full-screen tab panels.
 
 ---
 
 ### Console Header (Fixed Top Bar)
+> **[Current:]** The console reuses the shared `Header` (health pills + WebSocket status +
+> light/dark theme toggle) and a separate `StatsRibbon` for the metrics below. A dedicated
+> `ConsoleHeader` component exists in `src/app/console/_components/console-header/` but is
+> **not wired into the page**.
+
 - **Left**: Logo + `APEX CONSOLE` wordmark.
 - **Center**: Three metric pills (shadcn `Badge`):
   - `Active Sagas: N` (live count)
@@ -141,7 +171,7 @@ The full-screen engineering observatory. Developers and interviewers can place r
   - `Failed: N` (session count)
 - **Right**:
   - WebSocket status indicator: `●` dot (Green/Amber/Red) + status text.
-  - Theme selector (Obsidian / Midnight / Steel).
+  - Theme toggle (light / dark).
 
 ---
 
@@ -198,7 +228,7 @@ Built with `@xyflow/react`. Full-height, no scroll.
 - Edges use React Flow's `animated` prop.
 - Edge color changes based on the event type currently traversing it.
 - Shows real RabbitMQ topology (exchanges, queues, routing keys).
-- Highlights the path when a WebSocket `notification` event arrives.
+- Highlights the path when a WebSocket `saga-event` (observability firehose) or `notification` (targeted order room) arrives.
 
 #### Saga State Machine Overlay
 - A compact state machine diagram overlaying the bottom-left corner of the canvas.
@@ -210,7 +240,8 @@ Built with `@xyflow/react`. Full-height, no scroll.
 ### Right Panel: Telemetry & Controls
 
 #### Section 1: Notification Feed (Tabs: All Events / Selected Order)
-- Fetches `GET /api/notifications` on mount and uses WebSocket events to trigger subsequent data fetches ("event-driven cache invalidation" – no interval polling while connected).
+- Fetches `GET /api/notifications` on mount and uses WebSocket events to trigger subsequent data fetches ("event-driven cache invalidation").
+> **[Current:]** The feed is now a dedicated **`EventStream` component** (`_components/event-stream`) surfaced as the **"Event Ledger" tab of the `ObservabilityDeck`** (not a right-hand panel, and no longer inline in `page.tsx`). It has ALL / SUCCESS / ERRORS filter pills and infinite scroll. `console/page.tsx` still runs a **3-second polling fallback** (`listNotificationsAction` + `listOrdersAction`) alongside the WebSocket invalidation, and there is no per-order "Selected Order" tab. Live WebSocket events reach the browser via a **Redis Socket.io backplane** (see backend `docs/redis-setup.md`). The **topology / Event Flow Log** is driven by the **`saga-event` firehose** (`saga:firehose` room, auto-joined on connect); per-order **`notification`** events are used for toasts only.
 - Monospace terminal-style log panel for real-time events.
 - Each log line: timestamp + event type + `orderId` (clickable) + status badge.
 - Clicking a log line opens a **shadcn `Sheet` (right drawer)** containing:
@@ -218,6 +249,8 @@ Built with `@xyflow/react`. Full-height, no scroll.
   - `correlationId` and `causationId` relationship diagram.
 
 #### Section 3: Chaos Monkey Controls
+> **[Current:] Not implemented as UI.** Chaos-monkey toggle state exists in `features/ui/ui.slice.ts` but there are no rendered controls and no fault injection wired up.
+
 - Toggle switches (shadcn `Switch`) per service:
   - `"Inventory DB Lock"` — simulates reservation failure.
   - `"Payment Timeout"` — simulates payment processing failure.
@@ -243,7 +276,11 @@ Built with `@xyflow/react`. Full-height, no scroll.
 
 ## 5. Theme System
 
-Three themes, switchable from the console header. Implemented via CSS custom properties and `next-themes`.
+> **[Current:]** Implemented as a **two-mode light/dark toggle** via a custom
+> `ThemeProvider` (`src/theme/theme-provider.tsx`) that sets `data-theme="light|dark"` and
+> persists the choice in `localStorage`. It uses CSS custom properties in `globals.css`.
+> `next-themes` is a dependency but is **not** used. The original three-theme design
+> (Obsidian / Midnight / Steel) below is aspirational and not built.
 
 | Theme | Background | Primary Accent | Feel |
 |---|---|---|---|

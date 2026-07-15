@@ -24,7 +24,8 @@ export const shipmentsSlice = createAppSlice({
   initialState,
   reducers: {},
   selectors: {
-    selectAllShipments: (state) => state.shipments,
+    selectAllShipments: (state) =>
+      Array.isArray(state.shipments) ? state.shipments : [],
   },
 });
 

@@ -17,7 +17,8 @@ export const catalogSlice = createAppSlice({
   initialState,
   reducers: {},
   selectors: {
-    selectProducts: (state) => state.products,
+    selectProducts: (state) =>
+      Array.isArray(state.products) ? state.products : [],
     selectCatalogLoading: (state) => state.loading,
   },
   extraReducers: (builder) => {

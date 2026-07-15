@@ -1,5 +1,10 @@
 import { combineSlices, configureStore } from "@reduxjs/toolkit";
-import { persistReducer, persistStore, Persistor } from "redux-persist";
+import {
+  persistReducer,
+  persistStore,
+  createMigrate,
+  Persistor,
+} from "redux-persist";
 import createWebStorage from "redux-persist/es/storage/createWebStorage";
 import catalogReducer from "@/features/catalog/catalog.slice";
 import ordersReducer from "@/features/orders/orders.slice";
@@ -39,10 +44,25 @@ const rootReducer = combineSlices({
 
 export type RootState = ReturnType<typeof rootReducer>;
 
+/**
+ * Bumping `version` invalidates any persisted state written under an older
+ * store shape. The migration below discards stale state entirely, which
+ * prevents corrupt shapes (e.g. `orders` rehydrated as a non-array) from
+ * crashing the UI. Bump the version whenever a persisted slice shape changes.
+ */
+const PERSIST_VERSION = 1;
+
+const migrations = {
+  // Drop any pre-versioned persisted state so it re-hydrates from initialState.
+  0: () => undefined,
+};
+
 const persistConfig = {
   key: "root",
+  version: PERSIST_VERSION,
   storage,
   blacklist: ["telemetry", "ui", "health", "notifications"],
+  migrate: createMigrate(migrations, { debug: false }),
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

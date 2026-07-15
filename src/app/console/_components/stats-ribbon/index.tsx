@@ -1,5 +1,4 @@
 "use client";
-
 import React from "react";
 import { ShoppingBag, ShieldCheck, Bell } from "lucide-react";
 import { useAppSelector } from "@/store/hooks";
@@ -7,6 +6,7 @@ import { selectAllOrders } from "@/features/orders/orders.slice";
 import { selectAllNotifications } from "@/features/notifications/notifications.slice";
 import { selectEventLog } from "@/features/telemetry/telemetry.slice";
 import { OrderStatus } from "@/common/order-status.enum";
+import { motion } from "framer-motion";
 
 export function StatsRibbon() {
   const orders = useAppSelector(selectAllOrders);
@@ -22,51 +22,73 @@ export function StatsRibbon() {
   const totalNotifications = notifications.length + eventLog.length;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-7xl mx-auto">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 w-full">
       {/* Total Orders Stat */}
-      <div className="flex items-center gap-4 px-5 py-4 rounded-2xl border border-border/80 bg-card/45 backdrop-blur-md shadow-lg transition-all hover:bg-card/60">
-        <div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
-          <ShoppingBag className="h-5 w-5 text-primary" />
+      <motion.div
+        whileHover={{ y: -2, scale: 1.01 }}
+        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+        className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-border/40 bg-card/25 backdrop-blur-md shadow-sm transition-colors hover:bg-card/40 hover:border-primary/40 group cursor-default"
+      >
+        <div className="p-2 rounded-lg bg-primary/10 border border-primary/20 text-primary transition-colors group-hover:bg-primary/20">
+          <ShoppingBag className="h-4 w-4" />
         </div>
-        <div>
-          <p className="text-[11px] text-muted-foreground font-mono font-bold tracking-wider uppercase">
+        <div className="flex flex-col">
+          <span className="text-[9px] text-muted-foreground font-mono font-bold tracking-widest uppercase">
             Total Orders
-          </p>
-          <p className="text-2xl font-bold font-mono tracking-tight text-foreground">
+          </span>
+          <span className="text-lg font-bold font-mono tracking-tight text-foreground tabular-nums">
             {totalOrders}
-          </p>
+          </span>
         </div>
-      </div>
+      </motion.div>
 
       {/* Active Sagas Stat */}
-      <div className="flex items-center gap-4 px-5 py-4 rounded-2xl border border-border/80 bg-card/45 backdrop-blur-md shadow-lg transition-all hover:bg-card/60">
-        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-          <ShieldCheck className="h-5 w-5 text-amber-500 animate-pulse" />
+      <motion.div
+        whileHover={{ y: -2, scale: 1.01 }}
+        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+        className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-border/40 bg-card/25 backdrop-blur-md shadow-sm transition-colors hover:bg-card/40 hover:border-amber-500/40 group cursor-default"
+      >
+        <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500 transition-colors group-hover:bg-amber-500/20">
+          <ShieldCheck className="h-4 w-4" />
         </div>
-        <div>
-          <p className="text-[11px] text-muted-foreground font-mono font-bold tracking-wider uppercase">
+        <div className="flex flex-col">
+          <span className="text-[9px] text-muted-foreground font-mono font-bold tracking-widest uppercase flex items-center gap-1.5">
             Active Sagas
-          </p>
-          <p className="text-2xl font-bold font-mono tracking-tight text-foreground">
+            {activeSagas > 0 ? (
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
+              </span>
+            ) : (
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" title="System Idle" />
+            )}
+          </span>
+          <span className="text-lg font-bold font-mono tracking-tight text-foreground tabular-nums">
             {activeSagas}
-          </p>
+          </span>
         </div>
-      </div>
+      </motion.div>
 
       {/* Notification Event Counter */}
-      <div className="flex items-center gap-4 px-5 py-4 rounded-2xl border border-border/80 bg-card/45 backdrop-blur-md shadow-lg transition-all hover:bg-card/60">
-        <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
-          <Bell className="h-5 w-5 text-cyan-400" />
+      <motion.div
+        whileHover={{ y: -2, scale: 1.01 }}
+        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+        className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-border/40 bg-card/25 backdrop-blur-md shadow-sm transition-colors hover:bg-card/40 hover:border-cyan-500/40 group cursor-default"
+      >
+        <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 transition-colors group-hover:bg-cyan-500/20">
+          <Bell className="h-4 w-4" />
         </div>
-        <div>
-          <p className="text-[11px] text-muted-foreground font-mono font-bold tracking-wider uppercase">
+        <div className="flex flex-col">
+          <span className="text-[9px] text-muted-foreground font-mono font-bold tracking-widest uppercase">
             Choreography Events
-          </p>
-          <p className="text-2xl font-bold font-mono tracking-tight text-foreground">
+          </span>
+          <span className="text-lg font-bold font-mono tracking-tight text-foreground tabular-nums">
             {totalNotifications}
-          </p>
+          </span>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
+
+

@@ -1,5 +1,25 @@
 # Console Redesign Plan — Apex Observability Console (Final)
 
+> **Status (2026-07-14):** This was the redesign plan; the console has since been built and
+> the fake-saga/dead-toggle problems below are resolved. A few items landed differently from
+> this plan and are flagged inline with **[Current:]** notes:
+> - The console is a **responsive stacked layout** in a `max-w-[1600px]` container
+>   (`Header` → `StatsRibbon` → `OrderPlayground` → `ObservabilityDeck`), not the header +
+>   left/right + full-width layout drawn below.
+> - `SagaTimeline` and `NotificationFeed` were **not** built as separate panels — the saga
+>   stepper is a tab inside `OrderPlayground`, and the topology + notification ledger are now
+>   the two tabs of the **`ObservabilityDeck`** (`_components/observability-deck`), with the
+>   ledger extracted into its own **`EventStream`** component (`_components/event-stream`).
+> - A **3-second polling fallback** currently runs alongside WebSocket invalidation.
+> - Live WebSocket delivery works via a **Redis Socket.io backplane** (backend
+>   `docs/redis-setup.md`); before this, events from the separate notification consumer
+>   process never reached the browser.
+> - Shipping manual steps use **`POST /api/shipments/:orderId/ship`** and
+>   **`.../deliver`**, not `PATCH .../status`.
+> - The order status model is **coarse** (`PENDING, PLACED, PAID, SHIPPED, DELIVERED,
+>   CANCELLED`) — the finer `INVENTORY_RESERVED / PAYMENT_PROCESSING / SHIPPING /
+>   CANCELLING` states in this doc are not real backend statuses.
+
 ## The Core Problem With The Current Console
 
 The current console is architecturally dishonest:
@@ -18,19 +38,21 @@ The current console is architecturally dishonest:
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/api/health` | Database + RabbitMQ health check |
+| `GET` | `/health` | Database + RabbitMQ health check (note: not under `/api`) |
 | `POST` | `/api/orders` | Place order → triggers whole saga |
-| `GET` | `/api/orders` | List orders (paginated, filterable by status) |
+| `GET` | `/api/orders` | List orders (`?status=&limit=&offset=`; returns `{ items, total }`) |
 | `GET` | `/api/orders/:id` | Get single order |
 | `POST` | `/api/orders/:id/cancel` | Cancel order → triggers compensation saga |
 | `GET` | `/api/products` | List products (Inventory module) |
 | `POST` | `/api/products` | Add product |
 | `PATCH` | `/api/products/:id/stock` | Adjust stock |
 | `GET` | `/api/payments` | List payments |
+| `GET` | `/api/payments/:orderId` | Get payment for an order |
 | `GET` | `/api/shipments` | List shipments |
-| `PATCH` | `/api/shipments/:id/status` | Mark shipment SHIPPED or DELIVERED (manual step) |
-| `GET` | `/api/notifications` | List all notifications |
-| `GET` | `/api/notifications/:orderId` | Get notifications for a specific order |
+| `GET` | `/api/shipments/:orderId` | Get shipment for an order |
+| `POST` | `/api/shipments/:orderId/ship` | Mark shipment SHIPPED (body: `{ carrier, trackingNumber }`) |
+| `POST` | `/api/shipments/:orderId/deliver` | Mark shipment DELIVERED (no body) |
+| `GET` | `/api/notifications` | List notifications (`?orderId=&limit=&offset=`; `orderId` filters by order) |
 
 ### 2. Real WebSocket Contract (Socket.io)
 
@@ -46,14 +68,20 @@ SERVER → CLIENT (acknowledgement):
   event: "subscribed"
   data:  { room: "order:<id>", success: true }
 
-SERVER → CLIENT (real-time saga push, from NotificationGateway.broadcastToOrder):
+SERVER → CLIENT (real-time saga push, from NotificationBroadcaster.broadcastToOrder via the Redis backplane):
+
+  # Targeted — order-scoped toasts only
   event: "notification"
   data:  {
     orderId:   string,
-    eventType: string,    // e.g. "OrderPlacedProcessor", "PaymentCompletedProcessor"
-    message:   string,    // e.g. "Payment processed successfully!"
+    eventType: string,    // e.g. "OrderPlacedEvent", "PaymentCompletedEvent"
+    message:   string,
     occurredAt: Date
   }
+
+  # Observability firehose — drives topology + Event Flow Log (auto-joined on connect)
+  event: "saga-event"
+  data:  { orderId, eventType, message, occurredAt }   // same payload shape
 ```
 
 **Critical flow**: When `POST /api/orders` succeeds → immediately call
@@ -61,12 +89,19 @@ SERVER → CLIENT (real-time saga push, from NotificationGateway.broadcastToOrde
 
 ### 3. Real Order Status Progression
 
+The **order** entity has a coarse status set; the intermediate saga steps (inventory
+reserved, payment processing, etc.) live in the other modules' own entities/events, not on
+the order status.
+
 ```
-PLACED → INVENTORY_RESERVED → PAYMENT_PROCESSING → PAID → SHIPPING → DELIVERED
-              ↘                       ↘
-         CANCELLED              PAYMENT_FAILED → CANCELLING → CANCELLED
-       (out of stock)
+PENDING → PLACED → PAID → SHIPPED → DELIVERED
+             ↘        ↘
+         CANCELLED  CANCELLED
+    (compensation on inventory/payment failure or user cancel;
+     not allowed once SHIPPED/DELIVERED)
 ```
+
+Order status enum (`OrderStatus`): `PENDING, PLACED, PAID, CANCELLED, SHIPPED, DELIVERED`.
 
 ### 4. Complete RabbitMQ Topology — Exact Naming from Backend Source
 
@@ -77,7 +112,7 @@ PLACED → INVENTORY_RESERVED → PAYMENT_PROCESSING → PAID → SHIPPING → D
 | `order-exchange` | **topic** | Order | `OrderPlacedEvent`, `OrderCancelledEvent` |
 | `inventory-exchange` | **topic** | Inventory | `InventoryReservedEvent`, `InventoryReservationFailedEvent`, `InventoryReleasedEvent` |
 | `payment-exchange` | **topic** | Payment | `PaymentCompletedEvent`, `PaymentFailedEvent` |
-| `shipping-exchange` | **topic** | Shipping | `ShipmentCreatedEvent`, `ShipmentDeliveredEvent` |
+| `shipping-exchange` | **topic** | Shipping | `ShipmentCreatedEvent`, `ShipmentShippedEvent`, `ShipmentDeliveredEvent` |
 | `order-fanout-exchange` | **fanout** | Order | `OrderCancelledEvent` (broadcast to ALL) |
 | `*-retry-exchange` (per module) | **direct** | Internal retry | Dead-letter re-queuing |
 
@@ -88,7 +123,7 @@ PLACED → INVENTORY_RESERVED → PAYMENT_PROCESSING → PAID → SHIPPING → D
 | `order-queue` | Order | `inventory-exchange` | `inventory.reservation-failed` |
 | `order-queue` | Order | `payment-exchange` | `payment.completed` |
 | `order-queue` | Order | `payment-exchange` | `payment.failed` |
-| `order-queue` | Order | `shipping-exchange` | `shipping.created` |
+| `order-queue` | Order | `shipping-exchange` | `shipping.shipped` |
 | `order-queue` | Order | `shipping-exchange` | `shipping.delivered` |
 | `inventory-queue` | Inventory | `order-exchange` | `order.placed` |
 | `inventory-queue` | Inventory | `order-fanout-exchange` | — (fanout, no key) |
@@ -96,7 +131,7 @@ PLACED → INVENTORY_RESERVED → PAYMENT_PROCESSING → PAID → SHIPPING → D
 | `payment-queue` | Payment | `order-fanout-exchange` | — (fanout, no key) |
 | `shipping-queue` | Shipping | `payment-exchange` | `payment.completed` |
 | `shipping-queue` | Shipping | `order-fanout-exchange` | — (fanout, no key) |
-| `notification-queue` | **Notification** | **ALL exchanges** | `order.placed`, `inventory.reserved`, `inventory.reservation-failed`, `payment.completed`, `payment.failed`, `shipping.created`, `shipping.delivered`, `order.cancelled`, `inventory.released` |
+| `notification-queue` | **Notification** | **ALL exchanges** | `order.placed`, `inventory.reserved`, `inventory.reservation-failed`, `payment.completed`, `payment.failed`, `shipping.created`, `shipping.shipped`, `shipping.delivered`, `order.cancelled`, `inventory.released` |
 
 > **Important**: The Notification module is a **terminal consumer** — it subscribes to EVERY event in the system and broadcasts them over WebSocket. It does NOT publish any events back. This is why the WebSocket works end-to-end.
 
@@ -106,14 +141,13 @@ Each module has its own `outbox_messages` and `inbox_messages` tables in its own
 
 | Module | Schema | Outbox Table | Inbox Table |
 |---|---|---|---|
-| Shared | `shared_schema` | `outbox_messages` | `inbox_messages` |
-| Order | `order_schema` | (uses shared) | (uses shared) |
-| Inventory | `inventory_schema` | (uses shared) | (uses shared) |
-| Payment | `payment_schema` | (uses shared) | (uses shared) |
-| Shipping | `shipping_schema` | (uses shared) | (uses shared) |
-| Notification | `notification_schema` | (none — terminal) | (uses shared) |
+| Order | `order_schema` | `order_schema.outbox_messages` | `order_schema.inbox_messages` |
+| Inventory | `inventory_schema` | `inventory_schema.outbox_messages` | `inventory_schema.inbox_messages` |
+| Payment | `payment_schema` | `payment_schema.outbox_messages` | `payment_schema.inbox_messages` |
+| Shipping | `shipping_schema` | `shipping_schema.outbox_messages` | `shipping_schema.inbox_messages` |
+| Notification | `notification_schema` | `notification_schema.outbox_messages` | `notification_schema.inbox_messages` |
 
-> **Key insight for the console**: When a module writes a domain event, it writes to the shared `outbox_messages` table in the same DB transaction as the entity update. The schema-level isolation means each module's business tables are physically separated even though they share the outbox relay.
+> **Key insight for the console**: When a module writes a domain event, it writes to **its own** `outbox_messages` table (inside that module's schema) in the same DB transaction as the entity update. Each module has its own outbox/inbox pair — there is no central `shared_schema` table. The `OutboxMessage`/`InboxMessage` classes are defined in the `shared` module but the tables are created per-module by each module's migrations.
 
 #### CLI Commands (what runs in production as cronjobs/daemons)
 
@@ -134,19 +168,25 @@ npx ts-node ... handle-messages --module notification # listens on notification-
 
 ### 5. Payment Simulation — Must Be Clear in Console
 
-The Payment module simulates payment processing. These rules must be visible in the UI:
+The Payment module simulates payment processing. The rule to surface in the UI:
 
-> **80% of orders succeed** (payment completed automatically)
-> **20% of orders fail** — specifically: if `totalAmount` ends in `.99` (e.g., `29.99`, `99.99`) → payment FAILS and the saga compensation runs
+> **Deterministic simulation:** a payment **fails if and only if the amount ends in `.99`**
+> (e.g. `29.99`, `99.99`) — implemented as `Math.round(amount * 100) % 100 === 99` in
+> `InventoryReservedProcessor`. Every other amount succeeds. When it fails, the saga
+> compensation runs (stock released, order cancelled).
 
-This is NOT Stripe. There is no external payment gateway. The simulation lives in the Payment module's handler.
+This is NOT Stripe. There is no external payment gateway, and there is no random/percentage
+component — it is purely the `.99` rule. The simulation lives in the Payment module's
+`inventory-reserved` processor.
 
 ### 6. Manual Steps — Triggerable From Console
 
-After `PaymentCompletedEvent`, the Shipping module creates a shipment with status `PENDING`. The saga does **not** auto-deliver. These manual API calls must be exposed as buttons in the console:
+After `PaymentCompletedEvent`, the Shipping module creates a shipment with status `PENDING`. The order stays **PAID**. The saga does **not** auto-ship or auto-deliver. These manual API calls must be exposed as buttons in the console:
 
-- **"Mark as Shipped"** → `PATCH /api/shipments/:id/status` body: `{ "status": "SHIPPED" }` → triggers `ShipmentCreatedEvent` → Order → `SHIPPING`
-- **"Mark as Delivered"** → `PATCH /api/shipments/:id/status` body: `{ "status": "DELIVERED" }` → triggers `ShipmentDeliveredEvent` → Order → `DELIVERED`
+- **"Dispatch Shipment"** → `POST /api/shipments/:orderId/ship` body: `{ "carrier": "DHL Express", "trackingNumber": "..." }` → emits `ShipmentShippedEvent` → Order module → order `SHIPPED`
+- **"Confirm Delivery"** → `POST /api/shipments/:orderId/deliver` (no body) → emits `ShipmentDeliveredEvent` → Order module → order `DELIVERED`
+
+> `ShipmentCreatedEvent` (emitted automatically after payment) is consumed by **Notification only** — it does not change order status.
 
 The console must label these clearly as **"Manual step — simulates courier update"** so the viewer understands why it's manual.
 
@@ -173,16 +213,24 @@ The console must label these clearly as **"Manual step — simulates courier upd
 - **On reconnect**: Short reconciliation HTTP fetch to catch missed events
 - **Fallback**: HTTP polling ONLY if WebSocket is unavailable (Socket.io handles this automatically with long-polling fallback)
 
-**Our implementation**:
+**Target implementation**:
 ```
 1. Page mount → GET /api/orders (load existing orders)
-2. POST /api/orders succeeds → socket.emit("subscribeToOrder", { orderId })
-3. socket.on("notification") → dispatch to Redux → re-fetch that specific order
-4. No interval polling while WebSocket is connected
-5. On socket disconnect → trigger a single reconciliation GET /api/notifications
+2. WebSocket connect → auto-join saga:firehose (saga-event) for topology; subscribeToOrder per active order (notification) for toasts
+3. socket.on("saga-event") → append to telemetry log → re-fetch order/products/notifications
+4. socket.on("notification") → show toast only
+5. No interval polling while WebSocket is connected
+6. On socket disconnect → trigger a single reconciliation GET /api/notifications
 ```
 
 This is what a senior architect calls **"event-driven cache invalidation"** — your REST data is the source of truth, your WebSocket events tell you *when* to refresh it. This is exactly how Stripe's dashboard works.
+
+> **[Current:]** Implemented in `useTelemetrySocket`: `saga-event` drives the telemetry log
+> (topology + Event Flow Log) and triggers re-fetches; `notification` drives toasts only.
+> Room subscription for targeted toasts happens when orders enter Redux. However,
+> `console/page.tsx` **also runs a 3-second `setInterval`** re-fetching orders +
+> notifications as a fallback, so step 5 ("no interval polling while connected") is not yet
+> true.
 
 ---
 
@@ -254,22 +302,24 @@ This is what a senior architect calls **"event-driven cache invalidation"** — 
 - No fake "saga transactions submitted" counter
 
 ### Panel 2: `OrderPlayground` (rework)
-**Left sub-panel — Place Order Form:**
-- `customerEmail` (email input, required)
+> **[Current:]** Built as a single full-width panel with tabs (place order + active orders + a saga tracker). The separate `SagaTimeline` panel below was folded into this component's saga tracker tab.
+
+**Place Order Form:**
+- `customerId` (UUID input, required — pre-filled with a debug UUID)
 - Product multi-select from `GET /api/products`
 - Quantity per product (number input)
-- Auto-calculated `totalAmount`
-- Prominent callout: **"⚠ Payment Simulation: 80% success. If total ends in .99 → Payment fails, saga compensation runs (stock released, order cancelled)"**
-- Submit → `POST /api/orders` → on success: `socket.emit("subscribeToOrder", { orderId })`
+- Auto-calculated total price
+- Prominent callout: **"⚠ Payment Simulation: a total ending in .99 → payment fails and saga compensation runs (stock released, order cancelled). All other totals succeed."**
+- Submit → `POST /api/orders` → the order enters Redux and the telemetry hook emits `subscribeToOrder`
 
-**Right sub-panel — Active Orders:**
-- Polls `GET /api/orders` on mount; re-fetches when WebSocket notification arrives
+**Active Orders:**
+- Loads `GET /api/orders` on mount; re-fetches when a WebSocket notification arrives (plus current 3s polling fallback)
 - Each order row: truncated ID, colored status badge, total, relative timestamp
-- Click row → select order (updates SagaTimeline)
+- Click row → select order (updates the saga tracker)
 - Context-aware action buttons:
-  - `PLACED` | `INVENTORY_RESERVED` | `PAYMENT_PROCESSING` → **[Cancel]** → `POST /api/orders/:id/cancel`
-  - `PAID` (shipment is PENDING) → **[Mark as Shipped]** → `PATCH /api/shipments/:id/status` `{ status: "SHIPPED" }`
-  - `SHIPPING` (shipment is SHIPPED) → **[Mark as Delivered]** → `PATCH /api/shipments/:id/status` `{ status: "DELIVERED" }`
+  - `PENDING` | `PLACED` | `PAID` → **[Cancel]** → `POST /api/orders/:id/cancel`
+  - `PAID` (shipment is PENDING) → **[Mark as Shipped]** → `POST /api/shipments/:orderId/ship` `{ carrier, trackingNumber }`
+  - `SHIPPED` → **[Mark as Delivered]** → `POST /api/shipments/:orderId/deliver`
 
 ### Panel 3: `SagaTimeline` (new — replaces TopologyVisualizer)
 - Shows the selected order's saga state as an animated stepper
@@ -293,9 +343,11 @@ This is what a senior architect calls **"event-driven cache invalidation"** — 
 - **Animation**: When a WebSocket `notification` event arrives with `eventType`, the corresponding path lights up for 2s (e.g., `PaymentCompletedEvent` → `payment-exchange` → `order-queue` + `shipping-queue` + `notification-queue` all pulse)
 
 ### Panel 5: `NotificationFeed` (rework of TelemetryLedger)
-- Tabs: **"All Events"** | **"Selected Order"**
-- "All Events" → fetches `GET /api/notifications` on mount + on each WS notification event (no interval polling while connected)
-- "Selected Order" → fetches `GET /api/notifications/:orderId` when order is selected + on WS events for that orderId
+> **[Current:]** Implemented as the **`EventStream` component** (`_components/event-stream`), surfaced as the **"Event Ledger" tab of the `ObservabilityDeck`**, with ALL / SUCCESS / ERRORS filter pills and infinite scroll. There is no "Selected Order" tab yet.
+
+- Tabs (target): **"All Events"** | **"Selected Order"**
+- "All Events" → fetches `GET /api/notifications` on mount + on each WS notification event
+- "Selected Order" → fetches `GET /api/notifications?orderId=<id>` when an order is selected + on WS events for that orderId
 - Each row: `eventType` colored badge | `orderId` (clickable) | relative timestamp | `message` text
 
 ---
@@ -358,18 +410,15 @@ health/
 
 ### Common Enums/Types
 
-**`common/order-status.enum.ts`** (new)
+**`common/order-status.enum.ts`** (as built — matches the backend order status)
 ```typescript
 export enum OrderStatus {
-  PLACED = 'PLACED',
-  INVENTORY_RESERVED = 'INVENTORY_RESERVED',
-  PAYMENT_PROCESSING = 'PAYMENT_PROCESSING',
-  PAID = 'PAID',
-  SHIPPING = 'SHIPPING',
-  DELIVERED = 'DELIVERED',
-  PAYMENT_FAILED = 'PAYMENT_FAILED',
-  CANCELLING = 'CANCELLING',
-  CANCELLED = 'CANCELLED',
+  PENDING = "PENDING",
+  PLACED = "PLACED",
+  PAID = "PAID",
+  CANCELLED = "CANCELLED",
+  SHIPPED = "SHIPPED",
+  DELIVERED = "DELIVERED",
 }
 ```
 

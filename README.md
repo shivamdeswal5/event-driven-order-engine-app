@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Frontend — Apex Console
 
-## Getting Started
+Next.js app for the Order Engine: marketing home, interactive **Learn** curriculum, and the **Engineering Console** (live topology, event ledger, place/ship/deliver).
 
-First, run the development server:
+Talks to the NestJS backend over REST + Socket.io. Realtime saga animations depend on Redis-backed broadcasts from backend workers.
+
+---
+
+## What’s included
+
+| Route | Purpose |
+|-------|---------|
+| `/` | Product / architecture landing |
+| `/learn` | Guided curriculum (architecture, RabbitMQ, outbox, saga, Redis, WebSockets, …) |
+| `/console` | Live playground + observability deck |
+
+### Console highlights
+
+- **Order playground** — place orders, ship, deliver  
+- **Live topology** — React Flow graph driven by `saga-event` firehose  
+- **Event ledger** — notification history  
+- **Health** — API / RabbitMQ / WebSocket status  
+
+### Learn highlights
+
+- Medium-style chapters with visual maps, FAQs, quizzes  
+- Official docs links (AWS, RabbitMQ, Redis, Microsoft Learn, …)  
+
+---
+
+## Tech stack
+
+- **Next.js** (App Router) · **React** · **TypeScript**  
+- **Redux Toolkit** (+ persist where used)  
+- **Socket.io client** — rooms / firehose  
+- **Axios** — REST (`NEXT_PUBLIC_BACKEND_URL`)  
+- **@xyflow/react** — topology + Learn diagrams  
+- **Framer Motion** · **Tailwind** · **shadcn-style UI**  
+
+---
+
+## Quick start
+
+### Prerequisites
+
+- Node.js 20+  
+- Backend running on `:8080` with Docker services (Postgres, RabbitMQ, **Redis**) and workers (`../start-workers.sh`)  
+
+### Setup
 
 ```bash
+cd frontend
+cp .env.example .env
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+From [`.env.example`](./.env.example):
 
-## Learn More
+```bash
+PORT=3000
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8080
+NEXT_PUBLIC_WS_URL=http://localhost:8080
+```
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Demo checklist
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Backend healthy · `./start-workers.sh` from repo root  
+2. Open `/console` — WebSocket connected  
+3. Place an order (skip `.99` totals unless testing failure)  
+4. Confirm topology + ledger advance to **PAID** / shipment created  
+5. **Ship** → **Deliver**  
+6. Optional: browse `/learn` for pattern explanations  
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Scripts
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run dev      # local development
+npm run build    # production build
+npm run start    # serve build
+npm run lint     # ESLint
+```
